@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next:*)",
+      "Bash(taskkill //F //IM node.exe)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s \"https://api.odsay.com/v1/api/searchPubTransPathT?SX=127.0276&SY=37.4979&EX=126.9706&EY=37.5547&apiKey=QhCryWciknzq0wmjGl6Uzw\")",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
