@@ -35,7 +35,15 @@ export async function GET(request: NextRequest) {
     url.searchParams.set("EY", ey);
     url.searchParams.set("apiKey", ODSAY_API_KEY);
 
-    const res = await fetch(url.toString());
+    // ODsay는 Referer 헤더로 도메인 인증을 함
+    // 서버 사이드 호출 시 Referer가 없어서 인증 실패하므로 명시적으로 추가
+    const referer = process.env.NODE_ENV === "production"
+      ? "https://meetspot-chi.vercel.app"
+      : "http://localhost:3000";
+
+    const res = await fetch(url.toString(), {
+      headers: { Referer: referer },
+    });
 
     if (!res.ok) {
       const err = await res.text();
