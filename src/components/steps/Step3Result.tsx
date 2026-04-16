@@ -77,9 +77,9 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
           const fromStation = findStation(p.station);
           if (!fromStation) continue;
 
-          // 같은 역이면 0분
+          // 같은 역이면 1분 (최소값)
           if (fromStation.name === destStation.name) {
-            times.push(0);
+            times.push(1);
             continue;
           }
 
@@ -87,7 +87,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
             fromStation.lat, fromStation.lng,
             destStation.lat, destStation.lng
           );
-          if (time !== null) times.push(time);
+          if (time !== null) times.push(Math.max(1, time));
         }
 
         if (times.length > 0) {
@@ -126,7 +126,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       <div className="text-center py-12">
         <p className="text-text-muted">추천 결과를 찾을 수 없습니다</p>
         <button onClick={onBack} className="mt-4 text-primary text-sm font-medium">
-          이전으로
+          이전
         </button>
       </div>
     );
@@ -191,7 +191,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
         className="w-full py-3.5 rounded-2xl text-sm font-semibold
                    bg-surface border border-border text-foreground hover:bg-surface-hover transition-colors"
       >
-        이전으로
+        이전
       </button>
     </div>
   );
