@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { RecommendedStation, Participant } from "@/lib/types";
 import { findStation } from "@/data/stations";
 import { Star, ChevronRight, Clock, Loader2 } from "lucide-react";
+import { getLineColor } from "@/lib/lineColors";
 
 interface Props {
   results: RecommendedStation[];
@@ -23,17 +24,6 @@ function PopularityStars({ count }: { count: number }) {
       ))}
     </div>
   );
-}
-
-function getLineColor(line: string): string {
-  const colors: Record<string, string> = {
-    "1": "bg-blue-600", "2": "bg-green-500", "3": "bg-orange-500",
-    "4": "bg-sky-400", "5": "bg-purple-500", "6": "bg-amber-700",
-    "7": "bg-olive-600", "8": "bg-pink-500", "9": "bg-amber-400",
-    "신분당": "bg-red-500", "분당": "bg-yellow-500", "경의중앙": "bg-teal-500",
-    "공항": "bg-blue-400",
-  };
-  return colors[line] || "bg-gray-400";
 }
 
 // 추천역별 소요시간 데이터
