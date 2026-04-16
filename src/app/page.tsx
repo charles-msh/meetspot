@@ -8,7 +8,7 @@ import Step1MeetingType from "@/components/steps/Step1MeetingType";
 import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
-import { MapPin } from "lucide-react";
+import { MapPin, ChevronLeft } from "lucide-react";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
 
@@ -42,6 +42,10 @@ export default function Home() {
     setStep(3);
   }
 
+  function handleBack() {
+    if (step > 0) setStep(step - 1);
+  }
+
   function handleRestart() {
     setStep(0);
     setMeetingInfo({ peopleCount: 2, meetingType: "friends", venueType: "restaurant" });
@@ -55,9 +59,19 @@ export default function Home() {
       {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-border">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
-            <MapPin className="w-4 h-4 text-white" />
-          </div>
+          {step > 0 ? (
+            <button
+              onClick={handleBack}
+              className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface transition-colors"
+              aria-label="이전 단계"
+            >
+              <ChevronLeft className="w-5 h-5 text-foreground" />
+            </button>
+          ) : (
+            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
+              <MapPin className="w-4 h-4 text-white" />
+            </div>
+          )}
           <h1 className="font-bold text-lg">
             만나<span className="text-primary">spot</span>
           </h1>

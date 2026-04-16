@@ -126,7 +126,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       <div className="text-center py-12">
         <p className="text-text-muted">추천 결과를 찾을 수 없습니다</p>
         <button onClick={onBack} className="mt-4 text-primary text-sm font-medium">
-          다시 입력하기
+          이전으로
         </button>
       </div>
     );
@@ -191,7 +191,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
         className="w-full py-3.5 rounded-2xl text-sm font-semibold
                    bg-surface border border-border text-foreground hover:bg-surface-hover transition-colors"
       >
-        다시 입력하기
+        이전으로
       </button>
     </div>
   );
