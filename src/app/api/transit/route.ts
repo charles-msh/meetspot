@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
 
 const ODSAY_API_KEY = process.env.ODSAY_API_KEY!;
+const redis = Redis.fromEnv();
 
 // ODsay 대중교통 길찾기 API
 // 출발 좌표 → 도착 좌표 간 대중교통 소요시간(분) 반환
@@ -15,8 +17,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "sx, sy, ex, ey 파라미터가 필요합니다" }, { status: 400 });
   }
 
+  // 캐시 키: 좌표 소수점 4자리로 고정 (같은 경로는 항상 같은 키)
+  const cacheKey = `transit:${parseFloat(sx).toFixed(4)}:${parseFloat(sy).toFixed(4)}:${parseFloat(ex).toFixed(4)}:${parseFloat(ey).toFixed(4)}`;
+
   try {
-    // ODsay API 키는 이미 URL-safe한 경우가 많지만, 혹시 모르니 두 방식 모두 시도
+    // 캐시에서 먼저 조회
+    const cached = await redis.get<number>(cacheKey);
+    if (cached !== null) {
+      return NextResponse.json({ totalTime: cached, cached: true });
+    }
+
+    // 캐시 미스 → ODsay API 호출
     const url = new URL("https://api.odsay.com/v1/api/searchPubTransPathT");
     url.searchParams.set("SX", sx);
     url.searchParams.set("SY", sy);
@@ -48,9 +59,12 @@ export async function GET(request: NextRequest) {
       p.info.totalTime < best.info.totalTime ? p : best
     );
 
-    return NextResponse.json({
-      totalTime: bestPath.info.totalTime, // 총 소요시간 (분)
-    });
+    const totalTime: number = bestPath.info.totalTime;
+
+    // 결과를 캐시에 저장 (7일 = 604800초)
+    await redis.set(cacheKey, totalTime, { ex: 604800 });
+
+    return NextResponse.json({ totalTime });
   } catch (error) {
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
   }
