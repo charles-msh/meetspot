@@ -1,0 +1,47 @@
+name: 전국 지하철역 데이터 자동 업데이트
+
+on:
+  # 매월 1일 오전 3시 (KST) = UTC 18:00 (전날)
+  schedule:
+    - cron: "0 18 28 * *"
+
+  # 수동 실행 (GitHub Actions 탭 → Run workflow)
+  workflow_dispatch:
+
+jobs:
+  update-stations:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+        with:
+          ref: dev   # dev 브랜치에 업데이트
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 역 데이터 수집 스크립트 실행
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+        run: node scripts/fetch-stations.mjs
+
+      - name: 변경 사항 커밋 & 푸시
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet src/data/stations.ts; then
+            echo "📭 변경 없음 - 스킵"
+          else
+            STATION_COUNT=$(grep -c "{ name:" src/data/stations.ts || echo "?")
+            git add src/data/stations.ts
+            git commit -m "chore: 전국 지하철역 데이터 자동 업데이트 (${STATION_COUNT}개역)"
+            git push origin dev
+            echo "✅ dev 브랜치에 푸시 완료"
+          fi
