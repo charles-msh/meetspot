@@ -63,44 +63,41 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       }
       setTransitMap({ ...newMap });
 
-      // 각 추천역에 대해 순차적으로 조회 (API 호출량 관리)
-      for (const station of results) {
+      // 모든 추천역을 동시에 처리 (병렬화)
+      await Promise.all(results.map(async (station) => {
         const destStation = findStation(station.name);
         if (!destStation) {
-          newMap[station.name] = { minTime: null, maxTime: null, loading: false };
-          setTransitMap({ ...newMap });
-          continue;
+          setTransitMap(prev => ({
+            ...prev,
+            [station.name]: { minTime: null, maxTime: null, loading: false },
+          }));
+          return;
         }
 
-        const times: number[] = [];
-        for (const p of participants) {
-          const fromStation = findStation(p.station);
-          if (!fromStation) continue;
+        // 해당 역에 대한 모든 참여자도 동시에 조회 (병렬화)
+        const timeResults = await Promise.all(
+          participants.map(async (p) => {
+            const fromStation = findStation(p.station);
+            if (!fromStation) return null;
+            if (fromStation.name === destStation.name) return 1;
+            const time = await fetchTransitTime(
+              fromStation.lat, fromStation.lng,
+              destStation.lat, destStation.lng
+            );
+            return time !== null ? Math.max(1, time) : null;
+          })
+        );
 
-          // 같은 역이면 1분 (최소값)
-          if (fromStation.name === destStation.name) {
-            times.push(1);
-            continue;
-          }
+        const times = timeResults.filter((t): t is number => t !== null);
 
-          const time = await fetchTransitTime(
-            fromStation.lat, fromStation.lng,
-            destStation.lat, destStation.lng
-          );
-          if (time !== null) times.push(Math.max(1, time));
-        }
-
-        if (times.length > 0) {
-          newMap[station.name] = {
-            minTime: Math.min(...times),
-            maxTime: Math.max(...times),
-            loading: false,
-          };
-        } else {
-          newMap[station.name] = { minTime: null, maxTime: null, loading: false };
-        }
-        setTransitMap({ ...newMap });
-      }
+        // 각 역이 완료되는 즉시 화면에 표시
+        setTransitMap(prev => ({
+          ...prev,
+          [station.name]: times.length > 0
+            ? { minTime: Math.min(...times), maxTime: Math.max(...times), loading: false }
+            : { minTime: null, maxTime: null, loading: false },
+        }));
+      }));
     }
 
     if (results.length > 0 && participants.length > 0) {
