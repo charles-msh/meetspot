@@ -118,7 +118,12 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
     if (info.minTime === info.maxTime) {
       return <span>약 {info.minTime}분</span>;
     }
-    return <span>{info.minTime}분~{info.maxTime}분</span>;
+    // 2번: 최단/최장 맥락 표시
+    return (
+      <span>
+        최단 {info.minTime}분 · 최장 {info.maxTime}분
+      </span>
+    );
   }
 
   if (results.length === 0) {

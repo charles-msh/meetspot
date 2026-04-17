@@ -137,21 +137,25 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       </div>
 
       {/* 음식 필터 (식당일 때만) */}
+      {/* 5번: 오른쪽 페이드 아웃으로 스크롤 가능 암시 */}
       {showFoodFilter && (
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-          {foodFilters.map((f) => (
-            <button
-              key={f}
-              onClick={() => handleFilterClick(f)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all
-                ${filter === f
-                  ? "bg-primary text-white"
-                  : "bg-surface border border-border text-text-muted hover:bg-surface-hover"
-                }`}
-            >
-              {f}
-            </button>
-          ))}
+        <div className="relative">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+            {foodFilters.map((f) => (
+              <button
+                key={f}
+                onClick={() => handleFilterClick(f)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all
+                  ${filter === f
+                    ? "bg-primary text-white"
+                    : "bg-surface border border-border text-text-muted hover:bg-surface-hover"
+                  }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
         </div>
       )}
 
@@ -238,10 +242,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       </div>
 
       {/* 하단 버튼 */}
-      <div className="flex gap-3 pt-2">
+      {/* 4번: "처음부터 다시"는 파괴적 액션이므로 텍스트 링크로 약화 */}
+      <div className="space-y-2 pt-2">
         <button
           onClick={onBack}
-          className="flex-1 py-3.5 rounded-2xl text-sm font-semibold
+          className="w-full py-3.5 rounded-2xl text-sm font-semibold
                      bg-surface border border-border text-foreground hover:bg-surface-hover transition-colors"
         >
           <ArrowLeft className="w-4 h-4 inline mr-1 -mt-0.5" />
@@ -249,9 +254,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         </button>
         <button
           onClick={onRestart}
-          className="flex-1 py-3.5 rounded-2xl text-sm font-semibold text-white
-                     bg-primary hover:bg-primary-dark transition-all
-                     shadow-[0_4px_16px_rgba(108,99,255,0.3)]"
+          className="w-full py-2 text-sm text-text-muted hover:text-foreground transition-colors"
         >
           처음부터 다시
         </button>
