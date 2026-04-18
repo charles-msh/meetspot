@@ -133,7 +133,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       return <span className="text-text-muted">시간 정보 없음</span>;
     }
     if (info.minTime === info.maxTime) {
-      return <span>모두 {info.minTime}분</span>;
+      return <span>모두에게 {info.minTime}분</span>;
     }
     // 2번: 최단/최장 맥락 표시
     return (
