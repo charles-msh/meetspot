@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { RecommendedStation, Participant } from "@/lib/types";
 import { findStation } from "@/data/stations";
-import { Star, ChevronRight, Clock, Loader2 } from "lucide-react";
+import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { getLineColor } from "@/lib/lineColors";
 
 interface Props {
@@ -13,23 +13,12 @@ interface Props {
   onBack: () => void;
 }
 
-function PopularityStars({ count }: { count: number }) {
-  return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: 5 }, (_, i) => (
-        <Star
-          key={i}
-          className={`w-3 h-3 ${i < count ? "text-yellow-400 fill-yellow-400" : "text-gray-200"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
 // 추천역별 소요시간 데이터
 interface TransitInfo {
   minTime: number | null;
   maxTime: number | null;
+  avgTime: number | null;
+  hasSameStation: boolean; // 출발지 = 추천역인 참여자가 1명 이상
   loading: boolean;
 }
 
@@ -106,11 +95,19 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
 
       const newTransitMap: Record<string, TransitInfo> = {};
       for (const { station, times } of top5) {
+        const hasSameStation = times.some((t) => t === 0);
         // 0분(출발역=목적지)은 1분으로 표시 (이미 도착한 사람)
         const displayTimes = times.map((t) => (t === 0 ? 1 : t));
+        const minTime = displayTimes.length > 0 ? Math.min(...displayTimes) : null;
+        const maxTime = displayTimes.length > 0 ? Math.max(...displayTimes) : null;
+        const avgTime = displayTimes.length > 0
+          ? Math.round(displayTimes.reduce((s, t) => s + t, 0) / displayTimes.length)
+          : null;
         newTransitMap[station.name] = {
-          minTime: displayTimes.length > 0 ? Math.min(...displayTimes) : null,
-          maxTime: displayTimes.length > 0 ? Math.max(...displayTimes) : null,
+          minTime,
+          maxTime,
+          avgTime,
+          hasSameStation,
           loading: false,
         };
       }
@@ -132,13 +129,20 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
     if (info.minTime === null) {
       return <span className="text-text-muted">시간 정보 없음</span>;
     }
+    // 케이스 1: 모두 같은 소요시간
     if (info.minTime === info.maxTime) {
       return <span>모두에게 {info.minTime}분</span>;
     }
-    // 2번: 최단/최장 맥락 표시
+    // 케이스 2: 출발지 = 추천역인 참여자가 있음 → 평균 생략 (1분이 실제 이동시간이 아니므로)
+    if (info.hasSameStation) {
+      return (
+        <span>최단 {info.minTime}분 · 최장 {info.maxTime}분</span>
+      );
+    }
+    // 일반 케이스: 평균 · 최단 · 최장
     return (
       <span>
-        최단 {info.minTime}분 · 최장 {info.maxTime}분
+        평균 {info.avgTime}분 · 최단 {info.minTime}분 · 최장 {info.maxTime}분
       </span>
     );
   }
@@ -202,12 +206,11 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
                       </span>
                     ))}
                   </div>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+                  <div className="flex items-center mt-2 text-xs text-text-muted">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatTransitTime(transitMap[station.name])}
                     </span>
-                    <PopularityStars count={station.popularity} />
                   </div>
                 </div>
               </div>
