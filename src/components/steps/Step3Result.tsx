@@ -32,6 +32,25 @@ interface RankedData {
   transitMap: Record<string, TransitInfo>;
 }
 
+// 최대 N개씩만 병렬 실행 (ODsay 동시 요청 과부하 방지)
+async function concurrentMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  limit: number
+): Promise<R[]> {
+  const output = new Array<R>(items.length);
+  let nextIdx = 0;
+  async function worker() {
+    while (true) {
+      const idx = nextIdx++;
+      if (idx >= items.length) return;
+      output[idx] = await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return output;
+}
+
 async function fetchTransitTime(
   fromLat: number, fromLng: number,
   toLat: number, toLng: number
@@ -55,31 +74,30 @@ async function computeRanking(
   participants: Participant[],
   usePopularity: boolean
 ): Promise<RankedData> {
-  const allResults = await Promise.all(
-    candidates.map(async (station) => {
-      const destStation = findStation(station.name);
-      if (!destStation) return { station, times: [], allValid: false };
+  // 후보역 최대 4개씩 병렬 처리 (참여자 3명이면 동시 ODsay 호출 최대 12건)
+  const allResults = await concurrentMap(candidates, async (station) => {
+    const destStation = findStation(station.name);
+    if (!destStation) return { station, times: [], allValid: false };
 
-      const timeResults = await Promise.all(
-        participants.map(async (p) => {
-          const fromStation = findStation(p.station);
-          if (!fromStation) return null;
-          if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지
-          const time = await fetchTransitTime(
-            fromStation.lat, fromStation.lng,
-            destStation.lat, destStation.lng
-          );
-          return time !== null ? Math.max(1, time) : null;
-        })
-      );
+    const timeResults = await Promise.all(
+      participants.map(async (p) => {
+        const fromStation = findStation(p.station);
+        if (!fromStation) return null;
+        if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지
+        const time = await fetchTransitTime(
+          fromStation.lat, fromStation.lng,
+          destStation.lat, destStation.lng
+        );
+        return time !== null ? Math.max(1, time) : null;
+      })
+    );
 
-      return {
-        station,
-        times: timeResults.filter((t): t is number => t !== null),
-        allValid: timeResults.every((t) => t !== null),
-      };
-    })
-  );
+    return {
+      station,
+      times: timeResults.filter((t): t is number => t !== null),
+      allValid: timeResults.every((t) => t !== null),
+    };
+  }, 4);
 
   const expected = participants.length;
   // ODsay 실패한 참여자는 120분 패널티로 채워 점수 계산

@@ -53,7 +53,9 @@ export async function GET(request: NextRequest) {
     const data = await res.json();
 
     if (data.error) {
-      return NextResponse.json({ error: data.error.msg || "경로를 찾을 수 없습니다", code: data.error.code, raw: JSON.stringify(data) }, { status: 400 });
+      // ODsay 에러 코드: -100=쿼터초과, -99=키오류, 10=경로없음, 11=거리너무가까움
+      console.error(`[ODsay Error] code=${data.error.code} msg=${data.error.msg} route=${sx},${sy}→${ex},${ey}`);
+      return NextResponse.json({ error: data.error.msg || "경로를 찾을 수 없습니다", code: data.error.code }, { status: 400 });
     }
 
     // 여러 경로 중 최단 시간 추출
