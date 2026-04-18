@@ -146,12 +146,12 @@ async function computeRanking(
 
 const MODE_LABELS: Record<Mode, string> = {
   location: "중간 위치 우선",
-  hotspot: "번화가 우선",
+  hotspot: "핫플 우선",
 };
 
 const MODE_DESC: Record<Mode, string> = {
   location: "모두에게 가장 중간인 곳을 추천해드려요",
-  hotspot: "적절한 중간 위치면서 갈 곳이 많은 곳을 추천해드려요",
+  hotspot: "맛집이 많으면서 각자 오기 편한 곳을 추천해드려요",
 };
 
 export default function Step3Result({ results, resultsNoPop, participants, active, onSelect, onBack }: Props) {
