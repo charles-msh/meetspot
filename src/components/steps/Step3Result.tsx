@@ -22,6 +22,8 @@ interface TransitInfo {
   maxTime: number | null;
   avgTime: number | null;
   hasSameStation: boolean;
+  validCount: number;    // 실제 시간이 확인된 참여자 수
+  totalCount: number;    // 전체 참여자 수
   loading: boolean;
 }
 
@@ -79,19 +81,28 @@ async function computeRanking(
     })
   );
 
-  const complete = allResults.filter(({ allValid }) => allValid);
-  const toRank = complete.length >= 5 ? complete : allResults.filter(({ times }) => times.length > 0);
+  const expected = participants.length;
+  // ODsay 실패한 참여자는 120분 패널티로 채워 점수 계산
+  // → 데이터 부족한 역이 상위에 오르지 않도록 방지
+  const MISSING_PENALTY = 120;
 
-  const sorted = toRank.sort((a, b) => {
-    const avgA = a.times.reduce((s, t) => s + t, 0) / a.times.length;
-    const avgB = b.times.reduce((s, t) => s + t, 0) / b.times.length;
-    const baseA = avgA * 0.7 + Math.max(...a.times) * 0.3;
-    const baseB = avgB * 0.7 + Math.max(...b.times) * 0.3;
-    // 핫플 포함 모드: 인기도 높은 역에 최대 15분 보너스 (5점 → -15, 1점 → -3)
-    const scoreA = baseA - (usePopularity ? a.station.popularity * 3 : 0);
-    const scoreB = baseB - (usePopularity ? b.station.popularity * 3 : 0);
-    return scoreA - scoreB;
-  });
+  const sorted = allResults
+    .filter(({ times }) => times.length > 0)
+    .sort((a, b) => {
+      const fillA = Array(Math.max(0, expected - a.times.length)).fill(MISSING_PENALTY);
+      const allTimesA = [...a.times, ...fillA];
+      const avgA = allTimesA.reduce((s, t) => s + t, 0) / expected;
+      const maxA = Math.max(...allTimesA);
+
+      const fillB = Array(Math.max(0, expected - b.times.length)).fill(MISSING_PENALTY);
+      const allTimesB = [...b.times, ...fillB];
+      const avgB = allTimesB.reduce((s, t) => s + t, 0) / expected;
+      const maxB = Math.max(...allTimesB);
+
+      const scoreA = avgA * 0.7 + maxA * 0.3 - (usePopularity ? a.station.popularity * 3 : 0);
+      const scoreB = avgB * 0.7 + maxB * 0.3 - (usePopularity ? b.station.popularity * 3 : 0);
+      return scoreA - scoreB;
+    });
 
   const top5 = sorted.slice(0, 5);
 
@@ -104,7 +115,12 @@ async function computeRanking(
     const avgTime = displayTimes.length > 0
       ? Math.round(displayTimes.reduce((s, t) => s + t, 0) / displayTimes.length)
       : null;
-    transitMap[station.name] = { minTime, maxTime, avgTime, hasSameStation, loading: false };
+    transitMap[station.name] = {
+      minTime, maxTime, avgTime, hasSameStation,
+      validCount: displayTimes.length,
+      totalCount: expected,
+      loading: false,
+    };
   }
 
   return { ranked: top5.map(({ station }) => station), transitMap };
@@ -176,6 +192,15 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
     }
     if (info.minTime === null) {
       return <span className="text-text-muted">시간 정보 없음</span>;
+    }
+    // 데이터 부족: 일부 참여자 시간 미확인
+    if (info.validCount < info.totalCount) {
+      return (
+        <span>
+          최단 {info.minTime}분 · 최장 {info.maxTime}분
+          <span className="text-text-muted ml-1">({info.validCount}/{info.totalCount}명 확인)</span>
+        </span>
+      );
     }
     // 케이스 1: 모두 같은 소요시간
     if (info.minTime === info.maxTime) {
