@@ -160,10 +160,13 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
   const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
   const [displayTransitMap, setDisplayTransitMap] = useState<Record<string, TransitInfo>>({});
 
-  // 모드별 결과 캐시 (같은 검색 내에서 모드 전환 시 재계산 없이 즉시 표시)
+  // 모드별 결과 캐시
   const cacheRef = useRef<Partial<Record<Mode, RankedData>>>({});
-  // 새 검색(results 교체)을 감지해 캐시 무효화
+  // 새 검색(results 교체) 감지
   const prevResultsRef = useRef(results);
+  // 비동기 완료 시점의 최신 mode를 읽기 위한 ref
+  const modeRef = useRef<Mode>(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
 
   // results가 바뀌면(새 검색) 캐시 초기화 + 기본 모드로 리셋
   useEffect(() => {
@@ -177,32 +180,47 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
     }
   }, [results]);
 
-  // ODsay 재정렬 계산 — active(step===2)일 때만 실행
+  // 3단계 진입 시 두 모드를 동시에 계산 → 토글 전환은 즉시 표시
   useEffect(() => {
     if (!active || results.length === 0 || participants.length === 0) return;
 
-    const cached = cacheRef.current[mode];
-    if (cached) {
-      setDisplayRanked(cached.ranked);
-      setDisplayTransitMap(cached.transitMap);
+    // 이미 두 모드 모두 캐시됨 → 현재 모드 즉시 표시
+    if (cacheRef.current.location && cacheRef.current.hotspot) {
+      const data = cacheRef.current[mode]!;
+      setDisplayRanked(data.ranked);
+      setDisplayTransitMap(data.transitMap);
       setCalculating(false);
       return;
     }
 
     setCalculating(true);
     let cancelled = false;
-    const candidates = mode === "hotspot" ? results : resultsNoPop;
 
-    computeRanking(candidates, participants, mode === "hotspot").then((data) => {
+    Promise.all([
+      computeRanking(resultsNoPop, participants, false), // 중간 위치 우선
+      computeRanking(results, participants, true),       // 핫플 우선
+    ]).then(([locationData, hotspotData]) => {
       if (cancelled) return;
-      cacheRef.current[mode] = data;
+      cacheRef.current.location = locationData;
+      cacheRef.current.hotspot = hotspotData;
+      // 계산 완료 시점의 최신 mode 기준으로 표시
+      const data = cacheRef.current[modeRef.current]!;
       setDisplayRanked(data.ranked);
       setDisplayTransitMap(data.transitMap);
       setCalculating(false);
     });
 
     return () => { cancelled = true; };
-  }, [active, mode, results, resultsNoPop, participants]);
+  }, [active, results, resultsNoPop, participants]);
+
+  // 토글 전환 시 캐시된 데이터 즉시 표시
+  useEffect(() => {
+    const cached = cacheRef.current[mode];
+    if (cached) {
+      setDisplayRanked(cached.ranked);
+      setDisplayTransitMap(cached.transitMap);
+    }
+  }, [mode]);
 
   function formatTransitTime(info: TransitInfo | undefined): React.ReactNode {
     if (!info || info.loading) {
