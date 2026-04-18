@@ -66,8 +66,8 @@ export function findBestStations(
     };
   });
 
-  // 3. 점수 순 정렬 후 상위 5개 반환
+  // 3. 점수 순 정렬 후 상위 20개 반환 (Step3에서 실제 소요시간 기준으로 재정렬)
   return scored
     .sort((a, b) => a.score - b.score)
-    .slice(0, 5);
+    .slice(0, 20);
 }

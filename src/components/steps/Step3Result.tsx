@@ -50,58 +50,73 @@ async function fetchTransitTime(
 }
 
 export default function Step3Result({ results, participants, onSelect, onBack }: Props) {
+  // ranked: 실제 소요시간 기준으로 재정렬된 최종 5개
+  const [ranked, setRanked] = useState<RecommendedStation[]>([]);
   const [transitMap, setTransitMap] = useState<Record<string, TransitInfo>>({});
+  const [calculating, setCalculating] = useState(true);
 
   useEffect(() => {
-    // 각 추천역에 대해 모든 참여자의 소요시간 조회
-    async function loadTransitTimes() {
-      const newMap: Record<string, TransitInfo> = {};
+    async function rankByTransitTime() {
+      setCalculating(true);
+      setRanked([]);
+      setTransitMap({});
 
-      // 먼저 모든 역을 loading 상태로 설정
-      for (const station of results) {
-        newMap[station.name] = { minTime: null, maxTime: null, loading: true };
+      // 후보 20개 전부 병렬로 소요시간 조회
+      const allResults = await Promise.all(
+        results.map(async (station) => {
+          const destStation = findStation(station.name);
+          if (!destStation) return { station, times: [] };
+
+          const timeResults = await Promise.all(
+            participants.map(async (p) => {
+              const fromStation = findStation(p.station);
+              if (!fromStation) return null;
+              if (fromStation.name === destStation.name) return 1;
+              const time = await fetchTransitTime(
+                fromStation.lat, fromStation.lng,
+                destStation.lat, destStation.lng
+              );
+              return time !== null ? Math.max(1, time) : null;
+            })
+          );
+
+          return {
+            station,
+            times: timeResults.filter((t): t is number => t !== null),
+          };
+        })
+      );
+
+      // 실제 평균 소요시간 기준으로 정렬, 시간 정보 없는 역은 후순위
+      const sorted = allResults
+        .filter(({ times }) => times.length > 0)
+        .sort((a, b) => {
+          const avgA = a.times.reduce((s, t) => s + t, 0) / a.times.length;
+          const avgB = b.times.reduce((s, t) => s + t, 0) / b.times.length;
+          // 평균 70% + 최대 30% (공평함 반영)
+          const scoreA = avgA * 0.7 + Math.max(...a.times) * 0.3;
+          const scoreB = avgB * 0.7 + Math.max(...b.times) * 0.3;
+          return scoreA - scoreB;
+        });
+
+      const top5 = sorted.slice(0, 5);
+
+      const newTransitMap: Record<string, TransitInfo> = {};
+      for (const { station, times } of top5) {
+        newTransitMap[station.name] = {
+          minTime: Math.min(...times),
+          maxTime: Math.max(...times),
+          loading: false,
+        };
       }
-      setTransitMap({ ...newMap });
 
-      // 모든 추천역을 동시에 처리 (병렬화)
-      await Promise.all(results.map(async (station) => {
-        const destStation = findStation(station.name);
-        if (!destStation) {
-          setTransitMap(prev => ({
-            ...prev,
-            [station.name]: { minTime: null, maxTime: null, loading: false },
-          }));
-          return;
-        }
-
-        // 해당 역에 대한 모든 참여자도 동시에 조회 (병렬화)
-        const timeResults = await Promise.all(
-          participants.map(async (p) => {
-            const fromStation = findStation(p.station);
-            if (!fromStation) return null;
-            if (fromStation.name === destStation.name) return 1;
-            const time = await fetchTransitTime(
-              fromStation.lat, fromStation.lng,
-              destStation.lat, destStation.lng
-            );
-            return time !== null ? Math.max(1, time) : null;
-          })
-        );
-
-        const times = timeResults.filter((t): t is number => t !== null);
-
-        // 각 역이 완료되는 즉시 화면에 표시
-        setTransitMap(prev => ({
-          ...prev,
-          [station.name]: times.length > 0
-            ? { minTime: Math.min(...times), maxTime: Math.max(...times), loading: false }
-            : { minTime: null, maxTime: null, loading: false },
-        }));
-      }));
+      setRanked(top5.map(({ station }) => station));
+      setTransitMap(newTransitMap);
+      setCalculating(false);
     }
 
     if (results.length > 0 && participants.length > 0) {
-      loadTransitTimes();
+      rankByTransitTime();
     }
   }, [results, participants]);
 
@@ -134,6 +149,15 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
     );
   }
 
+  if (calculating) {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+        <p className="text-sm text-text-muted">실제 이동 시간을 계산하는 중이에요</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-muted">
@@ -141,7 +165,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       </p>
 
       <div className="space-y-3">
-        {results.map((station, i) => (
+        {ranked.map((station, i) => (
           <button
             key={station.name}
             onClick={() => onSelect(station)}
