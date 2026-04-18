@@ -66,7 +66,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
           onChange={(e) => handleInput(e.target.value)}
           onFocus={() => { if (results.length > 0) setIsOpen(true); }}
           placeholder={placeholder}
-          className={`w-full pl-9 pr-3 py-2.5 bg-surface border rounded-xl text-sm
+          className={`w-full pl-9 pr-3 py-2.5 bg-surface border rounded-xl text-base
                      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
                      transition-all placeholder:text-text-muted
                      ${isSelected ? "border-green-400 bg-green-50" : "border-border"}`}
