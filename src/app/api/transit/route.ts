@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
   const cacheKey = `transit:${parseFloat(sx).toFixed(4)}:${parseFloat(sy).toFixed(4)}:${parseFloat(ex).toFixed(4)}:${parseFloat(ey).toFixed(4)}`;
 
   try {
-    // 캐시에서 먼저 조회
+    // 캐시에서 먼저 조회 (0분은 과거 버그로 잘못 저장된 값 → 무효 처리)
     const cached = await redis.get<number>(cacheKey);
-    if (cached !== null) {
+    if (cached !== null && cached > 0) {
       return NextResponse.json({ totalTime: cached, cached: true });
     }
 
@@ -69,8 +69,10 @@ export async function GET(request: NextRequest) {
 
     const totalTime: number = bestPath.info.totalTime;
 
-    // 결과를 캐시에 저장 (7일 = 604800초)
-    await redis.set(cacheKey, totalTime, { ex: 604800 });
+    // 유효한 값만 캐시에 저장 (0분은 저장하지 않음)
+    if (totalTime > 0) {
+      await redis.set(cacheKey, totalTime, { ex: 604800 });
+    }
 
     return NextResponse.json({ totalTime });
   } catch (error) {
