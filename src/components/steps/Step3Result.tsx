@@ -145,17 +145,17 @@ async function computeRanking(
 }
 
 const MODE_LABELS: Record<Mode, string> = {
-  hotspot: "핫플 포함",
-  location: "딱 중간",
+  location: "중간 위치 우선",
+  hotspot: "번화가 우선",
 };
 
 const MODE_DESC: Record<Mode, string> = {
-  hotspot: "중간이면서 번화한 역을 추천해드려요",
-  location: "이동 시간이 가장 공평한 역을 추천해드려요",
+  location: "모두에게 가장 중간인 곳을 추천해드려요",
+  hotspot: "적절한 중간 위치면서 갈 곳이 많은 곳을 추천해드려요",
 };
 
 export default function Step3Result({ results, resultsNoPop, participants, active, onSelect, onBack }: Props) {
-  const [mode, setMode] = useState<Mode>("hotspot");
+  const [mode, setMode] = useState<Mode>("location");
   const [calculating, setCalculating] = useState(true);
   const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
   const [displayTransitMap, setDisplayTransitMap] = useState<Record<string, TransitInfo>>({});
@@ -170,7 +170,7 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
     if (prevResultsRef.current !== results) {
       cacheRef.current = {};
       prevResultsRef.current = results;
-      setMode("hotspot");
+      setMode("location");
       setDisplayRanked([]);
       setDisplayTransitMap({});
       setCalculating(true);
@@ -249,7 +249,7 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
     <div className="space-y-4">
       {/* 세그먼트 토글 */}
       <div className="flex bg-surface border border-border rounded-xl p-1">
-        {(["hotspot", "location"] as Mode[]).map((m) => (
+        {(["location", "hotspot"] as Mode[]).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -292,11 +292,6 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-base">{station.name}</span>
-                      {i === 0 && (
-                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                          BEST
-                        </span>
-                      )}
                     </div>
                     <div className="flex gap-1 mt-1">
                       {station.line.map((l) => (
