@@ -106,9 +106,11 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
 
       const newTransitMap: Record<string, TransitInfo> = {};
       for (const { station, times } of top5) {
+        // 0분(출발역=목적지)은 표시에서 제외, 실제 이동 시간만 표시
+        const displayTimes = times.filter((t) => t > 0);
         newTransitMap[station.name] = {
-          minTime: Math.min(...times),
-          maxTime: Math.max(...times),
+          minTime: displayTimes.length > 0 ? Math.min(...displayTimes) : null,
+          maxTime: displayTimes.length > 0 ? Math.max(...displayTimes) : null,
           loading: false,
         };
       }
@@ -131,7 +133,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       return <span className="text-text-muted">시간 정보 없음</span>;
     }
     if (info.minTime === info.maxTime) {
-      return <span>약 {info.minTime === 0 ? 1 : info.minTime}분</span>;
+      return <span>약 {info.minTime}분</span>;
     }
     // 2번: 최단/최장 맥락 표시
     return (
