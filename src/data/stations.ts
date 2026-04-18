@@ -923,10 +923,10 @@ export const stations: Station[] = [
   { name: "회현(남대문시장)", lat: 37.558698, lng: 126.978346, line: ["4"], popularity: 2 },
   { name: "효창공원앞", lat: 37.539279, lng: 126.961348, line: ["6", "경의중앙"], popularity: 3 },
   { name: "흑석(중앙대입구)", lat: 37.508889, lng: 126.963611, line: ["9"], popularity: 2 },
-  { name: "서울역", lat: 37.554951, lng: 126.970606, line: ["1", "4", "경의중앙", "공항", "GTX-A"], popularity: 5 },
-  { name: "운정중앙", lat: 37.716146, lng: 126.728286, line: ["GTX-A"], popularity: 2 },
-  { name: "킨텍스", lat: 37.665214, lng: 126.748326, line: ["GTX-A"], popularity: 2 },
-  { name: "동탄", lat: 37.200359, lng: 127.095576, line: ["GTX-A"], popularity: 2 },
+  { name: "서울역", lat: 37.555394, lng: 126.972643, line: ["1", "4", "경의중앙", "공항", "GTX-A"], popularity: 5 },
+  { name: "운정중앙", lat: 37.71621, lng: 126.72809, line: ["GTX-A"], popularity: 2 },
+  { name: "킨텍스", lat: 37.665175, lng: 126.748386, line: ["GTX-A"], popularity: 2 },
+  { name: "동탄", lat: 37.199862, lng: 127.095491, line: ["GTX-A"], popularity: 2 },
 ];
 
 export function findStation(name: string): Station | undefined {
