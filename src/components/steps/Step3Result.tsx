@@ -12,6 +12,7 @@ interface Props {
   results: RecommendedStation[];        // 핫플 포함 모드 후보 (withPopularity=true)
   resultsNoPop: RecommendedStation[];   // 딱 중간 모드 후보 (withPopularity=false)
   participants: Participant[];
+  active: boolean;                      // step === 2일 때만 true (hidden 상태에서 재계산 방지)
   onSelect: (station: RecommendedStation) => void;
   onBack: () => void;
 }
@@ -119,17 +120,32 @@ const MODE_DESC: Record<Mode, string> = {
   location: "이동 시간이 가장 공평한 역을 추천해드려요",
 };
 
-export default function Step3Result({ results, resultsNoPop, participants, onSelect, onBack }: Props) {
+export default function Step3Result({ results, resultsNoPop, participants, active, onSelect, onBack }: Props) {
   const [mode, setMode] = useState<Mode>("hotspot");
   const [calculating, setCalculating] = useState(true);
   const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
   const [displayTransitMap, setDisplayTransitMap] = useState<Record<string, TransitInfo>>({});
 
-  // 모드별 결과 캐시 (같은 모드 재클릭 시 재계산 없이 즉시 표시)
+  // 모드별 결과 캐시 (같은 검색 내에서 모드 전환 시 재계산 없이 즉시 표시)
   const cacheRef = useRef<Partial<Record<Mode, RankedData>>>({});
+  // 새 검색(results 교체)을 감지해 캐시 무효화
+  const prevResultsRef = useRef(results);
 
+  // results가 바뀌면(새 검색) 캐시 초기화 + 기본 모드로 리셋
   useEffect(() => {
-    if (results.length === 0 || participants.length === 0) return;
+    if (prevResultsRef.current !== results) {
+      cacheRef.current = {};
+      prevResultsRef.current = results;
+      setMode("hotspot");
+      setDisplayRanked([]);
+      setDisplayTransitMap({});
+      setCalculating(true);
+    }
+  }, [results]);
+
+  // ODsay 재정렬 계산 — active(step===2)일 때만 실행
+  useEffect(() => {
+    if (!active || results.length === 0 || participants.length === 0) return;
 
     const cached = cacheRef.current[mode];
     if (cached) {
@@ -152,7 +168,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onSel
     });
 
     return () => { cancelled = true; };
-  }, [mode, results, resultsNoPop, participants]);
+  }, [active, mode, results, resultsNoPop, participants]);
 
   function formatTransitTime(info: TransitInfo | undefined): React.ReactNode {
     if (!info || info.loading) {

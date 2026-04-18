@@ -130,14 +130,19 @@ export default function Home() {
           />
         )}
 
-        {step === 2 && (
-          <Step3Result
-            results={results}
-            resultsNoPop={resultsNoPop}
-            participants={participants}
-            onSelect={handleSelectStation}
-            onBack={() => setStep(1)}
-          />
+        {/* Step3Result: 결과가 있는 동안 마운트 유지 (hidden으로 숨김)
+            → 다른 단계로 이동해도 ODsay 계산 결과가 보존돼 매번 재계산하지 않음 */}
+        {results.length > 0 && (
+          <div className={step !== 2 ? "hidden" : ""}>
+            <Step3Result
+              results={results}
+              resultsNoPop={resultsNoPop}
+              participants={participants}
+              active={step === 2}
+              onSelect={handleSelectStation}
+              onBack={() => setStep(1)}
+            />
+          </div>
         )}
 
         {step === 3 && selectedStation && (
