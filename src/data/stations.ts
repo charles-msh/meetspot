@@ -472,7 +472,7 @@ export const stations: Station[] = [
   { name: "서부정류장(관문시장)", lat: 35.837337, lng: 128.55707, line: ["대구1"], popularity: 2 },
   { name: "서빙고", lat: 37.51961, lng: 126.988358, line: ["1"], popularity: 2 },
   { name: "서생", lat: 35.346121, lng: 129.29304, line: ["동해"], popularity: 2 },
-  { name: "서울", lat: 37.55585, lng: 126.972103, line: ["1", "4", "공항"], popularity: 5 },
+
   { name: "서울대벤처타운", lat: 37.472041, lng: 126.933977, line: ["신림"], popularity: 2 },
   { name: "서울대입구(관악구청)", lat: 37.481233, lng: 126.952745, line: ["2"], popularity: 2 },
   { name: "서울숲", lat: 37.543647, lng: 127.044686, line: ["수인분당"], popularity: 2 },
