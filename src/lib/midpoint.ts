@@ -19,8 +19,10 @@ function haversineDistance(
 }
 
 // 참여자들의 위치에서 최적의 만남 장소 추천
+// withPopularity: true = 번화함 가중치 포함 (핫플 포함 모드), false = 위치만 (딱 중간 모드)
 export function findBestStations(
-  participantStations: Station[]
+  participantStations: Station[],
+  withPopularity = true
 ): RecommendedStation[] {
   if (participantStations.length === 0) return [];
 
@@ -52,9 +54,9 @@ export function findBestStations(
     // 종합 점수 계산 (낮을수록 좋음)
     // - 평균 거리가 가까울수록 좋음 (가중치 40%)
     // - 최대 거리가 작을수록 좋음 = 공평함 (가중치 30%)
-    // - 인기도가 높을수록 좋음 (가중치 30%)
+    // - withPopularity=true면 인기도 높을수록 유리 (핫플 포함 모드)
     const distanceScore = avgDistance * 0.4 + maxDistance * 0.3;
-    const popularityBonus = (5 - station.popularity) * 2; // 인기도 5면 보너스 0, 1이면 8
+    const popularityBonus = withPopularity ? (5 - station.popularity) * 2 : 0;
     const score = distanceScore + popularityBonus;
 
     return {

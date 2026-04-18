@@ -1,25 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { RecommendedStation, Participant } from "@/lib/types";
 import { findStation } from "@/data/stations";
 import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { getLineColor } from "@/lib/lineColors";
 
+type Mode = "hotspot" | "location";
+
 interface Props {
-  results: RecommendedStation[];
+  results: RecommendedStation[];        // 핫플 포함 모드 후보 (withPopularity=true)
+  resultsNoPop: RecommendedStation[];   // 딱 중간 모드 후보 (withPopularity=false)
   participants: Participant[];
   onSelect: (station: RecommendedStation) => void;
   onBack: () => void;
 }
 
-// 추천역별 소요시간 데이터
 interface TransitInfo {
   minTime: number | null;
   maxTime: number | null;
   avgTime: number | null;
-  hasSameStation: boolean; // 출발지 = 추천역인 참여자가 1명 이상
+  hasSameStation: boolean;
   loading: boolean;
+}
+
+interface RankedData {
+  ranked: RecommendedStation[];
+  transitMap: Record<string, TransitInfo>;
 }
 
 async function fetchTransitTime(
@@ -38,89 +45,114 @@ async function fetchTransitTime(
   }
 }
 
-export default function Step3Result({ results, participants, onSelect, onBack }: Props) {
-  // ranked: 실제 소요시간 기준으로 재정렬된 최종 5개
-  const [ranked, setRanked] = useState<RecommendedStation[]>([]);
-  const [transitMap, setTransitMap] = useState<Record<string, TransitInfo>>({});
-  const [calculating, setCalculating] = useState(true);
+// ODsay 소요시간 기준으로 후보 재정렬 → 상위 5개 반환
+// usePopularity=true면 인기도 높은 역에 시간 보너스 적용 (핫플 포함 모드)
+async function computeRanking(
+  candidates: RecommendedStation[],
+  participants: Participant[],
+  usePopularity: boolean
+): Promise<RankedData> {
+  const allResults = await Promise.all(
+    candidates.map(async (station) => {
+      const destStation = findStation(station.name);
+      if (!destStation) return { station, times: [], allValid: false };
 
-  useEffect(() => {
-    async function rankByTransitTime() {
-      setCalculating(true);
-      setRanked([]);
-      setTransitMap({});
-
-      // 후보 20개 전부 병렬로 소요시간 조회
-      const allResults = await Promise.all(
-        results.map(async (station) => {
-          const destStation = findStation(station.name);
-          if (!destStation) return { station, times: [] };
-
-          const timeResults = await Promise.all(
-            participants.map(async (p) => {
-              const fromStation = findStation(p.station);
-              if (!fromStation) return null;
-              if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지: 0분
-              const time = await fetchTransitTime(
-                fromStation.lat, fromStation.lng,
-                destStation.lat, destStation.lng
-              );
-              return time !== null ? Math.max(1, time) : null;
-            })
+      const timeResults = await Promise.all(
+        participants.map(async (p) => {
+          const fromStation = findStation(p.station);
+          if (!fromStation) return null;
+          if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지
+          const time = await fetchTransitTime(
+            fromStation.lat, fromStation.lng,
+            destStation.lat, destStation.lng
           );
-
-          return {
-            station,
-            times: timeResults.filter((t): t is number => t !== null),
-            allValid: timeResults.every((t) => t !== null), // 모든 참여자 데이터 있는지
-          };
+          return time !== null ? Math.max(1, time) : null;
         })
       );
 
-      // 모든 참여자 데이터가 완전한 역 우선 / 없으면 부분 데이터라도 사용
-      const complete = allResults.filter(({ allValid }) => allValid);
-      const toRank = complete.length >= 5 ? complete : allResults.filter(({ times }) => times.length > 0);
+      return {
+        station,
+        times: timeResults.filter((t): t is number => t !== null),
+        allValid: timeResults.every((t) => t !== null),
+      };
+    })
+  );
 
-      const sorted = toRank
-        .sort((a, b) => {
-          const avgA = a.times.reduce((s, t) => s + t, 0) / a.times.length;
-          const avgB = b.times.reduce((s, t) => s + t, 0) / b.times.length;
-          // 평균 70% + 최대 30% (공평함 반영)
-          const scoreA = avgA * 0.7 + Math.max(...a.times) * 0.3;
-          const scoreB = avgB * 0.7 + Math.max(...b.times) * 0.3;
-          return scoreA - scoreB;
-        });
+  const complete = allResults.filter(({ allValid }) => allValid);
+  const toRank = complete.length >= 5 ? complete : allResults.filter(({ times }) => times.length > 0);
 
-      const top5 = sorted.slice(0, 5);
+  const sorted = toRank.sort((a, b) => {
+    const avgA = a.times.reduce((s, t) => s + t, 0) / a.times.length;
+    const avgB = b.times.reduce((s, t) => s + t, 0) / b.times.length;
+    const baseA = avgA * 0.7 + Math.max(...a.times) * 0.3;
+    const baseB = avgB * 0.7 + Math.max(...b.times) * 0.3;
+    // 핫플 포함 모드: 인기도 높은 역에 최대 15분 보너스 (5점 → -15, 1점 → -3)
+    const scoreA = baseA - (usePopularity ? a.station.popularity * 3 : 0);
+    const scoreB = baseB - (usePopularity ? b.station.popularity * 3 : 0);
+    return scoreA - scoreB;
+  });
 
-      const newTransitMap: Record<string, TransitInfo> = {};
-      for (const { station, times } of top5) {
-        const hasSameStation = times.some((t) => t === 0);
-        // 0분(출발역=목적지)은 1분으로 표시 (이미 도착한 사람)
-        const displayTimes = times.map((t) => (t === 0 ? 1 : t));
-        const minTime = displayTimes.length > 0 ? Math.min(...displayTimes) : null;
-        const maxTime = displayTimes.length > 0 ? Math.max(...displayTimes) : null;
-        const avgTime = displayTimes.length > 0
-          ? Math.round(displayTimes.reduce((s, t) => s + t, 0) / displayTimes.length)
-          : null;
-        newTransitMap[station.name] = {
-          minTime,
-          maxTime,
-          avgTime,
-          hasSameStation,
-          loading: false,
-        };
-      }
+  const top5 = sorted.slice(0, 5);
 
-      setRanked(top5.map(({ station }) => station));
-      setTransitMap(newTransitMap);
+  const transitMap: Record<string, TransitInfo> = {};
+  for (const { station, times } of top5) {
+    const hasSameStation = times.some((t) => t === 0);
+    const displayTimes = times.map((t) => (t === 0 ? 1 : t));
+    const minTime = displayTimes.length > 0 ? Math.min(...displayTimes) : null;
+    const maxTime = displayTimes.length > 0 ? Math.max(...displayTimes) : null;
+    const avgTime = displayTimes.length > 0
+      ? Math.round(displayTimes.reduce((s, t) => s + t, 0) / displayTimes.length)
+      : null;
+    transitMap[station.name] = { minTime, maxTime, avgTime, hasSameStation, loading: false };
+  }
+
+  return { ranked: top5.map(({ station }) => station), transitMap };
+}
+
+const MODE_LABELS: Record<Mode, string> = {
+  hotspot: "핫플 포함",
+  location: "딱 중간",
+};
+
+const MODE_DESC: Record<Mode, string> = {
+  hotspot: "중간이면서 번화한 역을 추천해드려요",
+  location: "이동 시간이 가장 공평한 역을 추천해드려요",
+};
+
+export default function Step3Result({ results, resultsNoPop, participants, onSelect, onBack }: Props) {
+  const [mode, setMode] = useState<Mode>("hotspot");
+  const [calculating, setCalculating] = useState(true);
+  const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
+  const [displayTransitMap, setDisplayTransitMap] = useState<Record<string, TransitInfo>>({});
+
+  // 모드별 결과 캐시 (같은 모드 재클릭 시 재계산 없이 즉시 표시)
+  const cacheRef = useRef<Partial<Record<Mode, RankedData>>>({});
+
+  useEffect(() => {
+    if (results.length === 0 || participants.length === 0) return;
+
+    const cached = cacheRef.current[mode];
+    if (cached) {
+      setDisplayRanked(cached.ranked);
+      setDisplayTransitMap(cached.transitMap);
       setCalculating(false);
+      return;
     }
 
-    if (results.length > 0 && participants.length > 0) {
-      rankByTransitTime();
-    }
-  }, [results, participants]);
+    setCalculating(true);
+    let cancelled = false;
+    const candidates = mode === "hotspot" ? results : resultsNoPop;
+
+    computeRanking(candidates, participants, mode === "hotspot").then((data) => {
+      if (cancelled) return;
+      cacheRef.current[mode] = data;
+      setDisplayRanked(data.ranked);
+      setDisplayTransitMap(data.transitMap);
+      setCalculating(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [mode, results, resultsNoPop, participants]);
 
   function formatTransitTime(info: TransitInfo | undefined): React.ReactNode {
     if (!info || info.loading) {
@@ -133,17 +165,13 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
     if (info.minTime === info.maxTime) {
       return <span>모두에게 {info.minTime}분</span>;
     }
-    // 케이스 2: 출발지 = 추천역인 참여자가 있음 → 평균 생략 (1분이 실제 이동시간이 아니므로)
+    // 케이스 2: 출발지 = 추천역인 참여자가 있음 → 평균 생략
     if (info.hasSameStation) {
-      return (
-        <span>최단 {info.minTime}분 · 최장 {info.maxTime}분</span>
-      );
+      return <span>최단 {info.minTime}분 · 최장 {info.maxTime}분</span>;
     }
-    // 일반 케이스: 평균 · 최단 · 최장
+    // 일반: 평균 · 최단 · 최장
     return (
-      <span>
-        평균 {info.avgTime}분 · 최단 {info.minTime}분 · 최장 {info.maxTime}분
-      </span>
+      <span>평균 {info.avgTime}분 · 최단 {info.minTime}분 · 최장 {info.maxTime}분</span>
     );
   }
 
@@ -158,67 +186,80 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
     );
   }
 
-  if (calculating) {
-    return (
-      <div className="text-center py-16 space-y-3">
-        <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-        <p className="text-sm text-text-muted">실제 이동 시간을 계산하는 중이에요</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <p className="text-sm text-text-muted">
-        모두에게 가깝고 놀기 좋은 역을 추천해드려요
-      </p>
-
-      <div className="space-y-3">
-        {ranked.map((station, i) => (
+      {/* 세그먼트 토글 */}
+      <div className="flex bg-surface border border-border rounded-xl p-1">
+        {(["hotspot", "location"] as Mode[]).map((m) => (
           <button
-            key={station.name}
-            onClick={() => onSelect(station)}
-            className={`w-full text-left p-4 rounded-2xl border transition-all hover:shadow-md
-              ${i === 0
-                ? "border-primary bg-primary/5 shadow-[0_2px_12px_rgba(108,99,255,0.15)]"
-                : "border-border bg-surface hover:bg-surface-hover"
-              }`}
+            key={m}
+            onClick={() => setMode(m)}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+              mode === m
+                ? "bg-white shadow-sm text-foreground"
+                : "text-text-muted hover:text-foreground"
+            }`}
           >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                  ${i === 0 ? "bg-primary text-white" : "bg-surface border border-border text-text-muted"}`}>
-                  {i + 1}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-base">{station.name}</span>
-                    {i === 0 && (
-                      <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                        BEST
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-1 mt-1">
-                    {station.line.map((l) => (
-                      <span key={l} className={`${getLineColor(l)} text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium`}>
-                        {l}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center mt-2 text-xs text-text-muted">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatTransitTime(transitMap[station.name])}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-text-muted mt-2" />
-            </div>
+            {MODE_LABELS[m]}
           </button>
         ))}
       </div>
+
+      <p className="text-sm text-text-muted">{MODE_DESC[mode]}</p>
+
+      {calculating ? (
+        <div className="text-center py-16 space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+          <p className="text-sm text-text-muted">실제 이동 시간을 계산하는 중이에요</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {displayRanked.map((station, i) => (
+            <button
+              key={station.name}
+              onClick={() => onSelect(station)}
+              className={`w-full text-left p-4 rounded-2xl border transition-all hover:shadow-md
+                ${i === 0
+                  ? "border-primary bg-primary/5 shadow-[0_2px_12px_rgba(108,99,255,0.15)]"
+                  : "border-border bg-surface hover:bg-surface-hover"
+                }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+                    ${i === 0 ? "bg-primary text-white" : "bg-surface border border-border text-text-muted"}`}>
+                    {i + 1}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-base">{station.name}</span>
+                      {i === 0 && (
+                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                          BEST
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 mt-1">
+                      {station.line.map((l) => (
+                        <span key={l} className={`${getLineColor(l)} text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium`}>
+                          {l}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex items-center mt-2 text-xs text-text-muted">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatTransitTime(displayTransitMap[station.name])}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-text-muted mt-2" />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       <button
         onClick={onBack}

@@ -22,7 +22,8 @@ export default function Home() {
   });
 
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [results, setResults] = useState<RecommendedStation[]>([]);
+  const [results, setResults] = useState<RecommendedStation[]>([]);          // 핫플 포함 모드 후보
+  const [resultsNoPop, setResultsNoPop] = useState<RecommendedStation[]>([]); // 딱 중간 모드 후보
   const [selectedStation, setSelectedStation] = useState<RecommendedStation | null>(null);
 
   function handleFindMidpoint() {
@@ -32,8 +33,8 @@ export default function Home() {
 
     if (stationData.length < 2) return;
 
-    const recommended = findBestStations(stationData);
-    setResults(recommended);
+    setResults(findBestStations(stationData, true));       // 핫플 포함
+    setResultsNoPop(findBestStations(stationData, false)); // 위치만
     setStep(2);
   }
 
@@ -51,6 +52,7 @@ export default function Home() {
     setMeetingInfo({ peopleCount: 2, meetingType: "friends", venueType: "restaurant" });
     setParticipants([]);
     setResults([]);
+    setResultsNoPop([]);
     setSelectedStation(null);
   }
 
@@ -131,6 +133,7 @@ export default function Home() {
         {step === 2 && (
           <Step3Result
             results={results}
+            resultsNoPop={resultsNoPop}
             participants={participants}
             onSelect={handleSelectStation}
             onBack={() => setStep(1)}
