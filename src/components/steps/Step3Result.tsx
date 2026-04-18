@@ -71,7 +71,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
             participants.map(async (p) => {
               const fromStation = findStation(p.station);
               if (!fromStation) return null;
-              if (fromStation.name === destStation.name) return 1;
+              if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지: 0분
               const time = await fetchTransitTime(
                 fromStation.lat, fromStation.lng,
                 destStation.lat, destStation.lng
@@ -83,13 +83,16 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
           return {
             station,
             times: timeResults.filter((t): t is number => t !== null),
+            allValid: timeResults.every((t) => t !== null), // 모든 참여자 데이터 있는지
           };
         })
       );
 
-      // 실제 평균 소요시간 기준으로 정렬, 시간 정보 없는 역은 후순위
-      const sorted = allResults
-        .filter(({ times }) => times.length > 0)
+      // 모든 참여자 데이터가 완전한 역 우선 / 없으면 부분 데이터라도 사용
+      const complete = allResults.filter(({ allValid }) => allValid);
+      const toRank = complete.length >= 5 ? complete : allResults.filter(({ times }) => times.length > 0);
+
+      const sorted = toRank
         .sort((a, b) => {
           const avgA = a.times.reduce((s, t) => s + t, 0) / a.times.length;
           const avgB = b.times.reduce((s, t) => s + t, 0) / b.times.length;
@@ -128,7 +131,7 @@ export default function Step3Result({ results, participants, onSelect, onBack }:
       return <span className="text-text-muted">시간 정보 없음</span>;
     }
     if (info.minTime === info.maxTime) {
-      return <span>약 {info.minTime}분</span>;
+      return <span>약 {info.minTime === 0 ? 1 : info.minTime}분</span>;
     }
     // 2번: 최단/최장 맥락 표시
     return (
