@@ -4,6 +4,42 @@ import { Redis } from "@upstash/redis";
 const ODSAY_API_KEY = process.env.ODSAY_API_KEY!;
 const redis = Redis.fromEnv();
 
+// ODsay 429(동시 요청 초과) 시 exponential backoff 재시도
+// 시도 간격: 600ms → 1200ms → 2400ms → 4800ms (최대 4회 재시도)
+const MAX_RETRIES = 4;
+const RETRY_BASE_MS = 600;
+
+async function callODsayWithRetry(urlStr: string, referer: string, route: string): Promise<{ data: unknown; attempts: number }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+      console.warn(`[ODsay 429] 재시도 ${attempt}/${MAX_RETRIES}, ${delay}ms 대기 route=${route}`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    const res = await fetch(urlStr, { headers: { Referer: referer } });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json() as { error?: { code: number; msg?: string }; result?: { path?: unknown[] } };
+
+    // 429: rate limit → 재시도
+    if ((data as { error?: { code: number } }).error?.code === 429) {
+      if (attempt < MAX_RETRIES) continue;
+      // 모든 재시도 소진
+      console.error(`[ODsay 429] 재시도 모두 실패 route=${route}`);
+      return { data, attempts: attempt + 1 };
+    }
+
+    // 429 외 에러 또는 성공 → 즉시 반환
+    return { data, attempts: attempt + 1 };
+  }
+
+  // 타입 가드용 (도달 불가)
+  throw new Error("unreachable");
+}
+
 // ODsay 대중교통 길찾기 API
 // 출발 좌표 → 도착 좌표 간 대중교통 소요시간(분) 반환
 export async function GET(request: NextRequest) {
@@ -27,7 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ totalTime: cached, cached: true });
     }
 
-    // 캐시 미스 → ODsay API 호출
+    // 캐시 미스 → ODsay API 호출 (429 시 자동 재시도)
     const url = new URL("https://api.odsay.com/v1/api/searchPubTransPathT");
     url.searchParams.set("SX", sx);
     url.searchParams.set("SY", sy);
@@ -41,31 +77,24 @@ export async function GET(request: NextRequest) {
       ? "https://meetspot-chi.vercel.app"
       : "http://localhost:3000";
 
-    const res = await fetch(url.toString(), {
-      headers: { Referer: referer },
-    });
+    const route = `${sx},${sy}→${ex},${ey}`;
+    const { data } = await callODsayWithRetry(url.toString(), referer, route);
+    const d = data as { error?: { code: number; msg?: string }; result?: { path?: { info: { totalTime: number } }[] } };
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: "ODsay API 호출 실패", detail: err }, { status: res.status });
-    }
-
-    const data = await res.json();
-
-    if (data.error) {
-      // ODsay 에러 코드: -100=쿼터초과, -99=키오류, 10=경로없음, 11=거리너무가까움
-      console.error(`[ODsay Error] code=${data.error.code} msg=${data.error.msg} route=${sx},${sy}→${ex},${ey}`);
-      return NextResponse.json({ error: data.error.msg || "경로를 찾을 수 없습니다", code: data.error.code }, { status: 400 });
+    if (d.error) {
+      // ODsay 에러 코드: -100=쿼터초과, -99=키오류, 10=경로없음, 11=거리너무가까움, 429=동시요청초과
+      console.error(`[ODsay Error] code=${d.error.code} msg=${d.error.msg} route=${route}`);
+      return NextResponse.json({ error: d.error.msg || "경로를 찾을 수 없습니다", code: d.error.code }, { status: 400 });
     }
 
     // 여러 경로 중 최단 시간 추출
-    const paths = data.result?.path || [];
+    const paths = d.result?.path || [];
     if (paths.length === 0) {
       return NextResponse.json({ totalTime: null, error: "경로 없음" });
     }
 
     // 최단 소요시간 경로
-    const bestPath = paths.reduce((best: { info: { totalTime: number } }, p: { info: { totalTime: number } }) =>
+    const bestPath = paths.reduce((best, p) =>
       p.info.totalTime < best.info.totalTime ? p : best
     );
 

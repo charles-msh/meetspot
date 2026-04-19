@@ -97,7 +97,9 @@ async function computeRanking(
       times: timeResults.filter((t): t is number => t !== null),
       allValid: timeResults.every((t) => t !== null),
     };
-  }, 4);
+  // limit=2: 후보역 2개씩 처리 (참여자 3명이면 동시 ODsay 호출 최대 6건)
+  // 두 모드 순차 실행 시 최대 6건 → ODsay per-second rate limit 여유 확보
+  }, 2);
 
   const expected = participants.length;
   // ODsay 실패한 참여자는 120분 패널티로 채워 점수 계산
@@ -200,10 +202,12 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
     setCalculating(true);
     let cancelled = false;
 
-    Promise.all([
-      computeRanking(resultsNoPop, participants, false), // 중간 위치 우선
-      computeRanking(results, participants, true),       // 핫플 우선
-    ]).then(([locationData, hotspotData]) => {
+    // 두 모드를 순차 실행 → 최대 동시 ODsay 호출 수 절반으로 감소
+    // (병렬 실행 시 동시 호출 수가 2배가 되어 ODsay 429 rate limit에 걸릴 수 있음)
+    (async () => {
+      const locationData = await computeRanking(resultsNoPop, participants, false); // 중간 위치 우선
+      if (cancelled) return;
+      const hotspotData = await computeRanking(results, participants, true);        // 핫플 우선
       if (cancelled) return;
       cacheRef.current.location = locationData;
       cacheRef.current.hotspot = hotspotData;
@@ -214,7 +218,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
       setCalculating(false);
       // 2단계 overlay 해제 + 3단계 전환
       onReadyRef.current();
-    });
+    })();
 
     return () => { cancelled = true; };
   }, [results, resultsNoPop, participants]);
