@@ -22,6 +22,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_PATH = path.join(__dirname, "../src/data/stations.ts");
 
 // ─────────────────────────────────────────
+// 알려진 동의어 역 매핑
+// 노선마다 공식 역명이 다른 환승역을 명시적으로 관리
+//
+// keepName: 통합 후 사용할 역명
+// action: "keep_separate" = 같은 역명이 되더라도 별개 역으로 유지
+// ─────────────────────────────────────────
+const KNOWN_SYNONYMS = [
+  // ── 같은 물리적 역, 다른 공식 역명 (통합) ──
+  { names: ["이수", "총신대입구(이수)"], keepName: "총신대입구(이수)" },
+
+  // ── 의도적으로 별개 역으로 유지 (이름 달라도 합치지 않음) ──
+  // 신촌(경의선): 경의중앙선 지상역 / 신촌(지하): 2호선 지하역 (700m 이격)
+  { names: ["신촌(경의선)", "신촌(지하)"], action: "keep_separate" },
+  // 대곡(서울): 수도권 / 대곡(대구): 대구1호선
+  { names: ["대곡", "대곡(정부대구청사)"], action: "keep_separate" },
+];
+
+// ─────────────────────────────────────────
 // 알려진 GTX 노선별 역 목록 (개통 여부 관리)
 // 새 역 개통 시 여기에 추가
 // status: "open" = 개통, "planned" = 예정
@@ -225,23 +243,31 @@ function haversineM(lat1, lng1, lat2, lng2) {
 }
 
 // ─────────────────────────────────────────
-// 유사 역명 중복 감지 → 저장 전 리포트
+// 중복·근접 역 감지 → 저장 전 리포트
 //
-// 기준 1: 괄호 제거 후 기본명이 동일한 역 쌍
-//          예) "수원" + "수원역(분당)" → 기본명 둘 다 "수원"
-// 기준 2: 기본명이 서로를 포함하면서 500m 이내인 역 쌍
+// 기준 A: 괄호 제거 후 기본명이 동일
+//          예) "수원" + "수원역(분당)"
+// 기준 B: 기본명이 서로를 포함하면서 500m 이내
 //          예) "종로3가" + "종로3가(탑골공원)"
+// 기준 C: 이름 무관하게 300m 이내 (이름이 달라도 같은 역일 수 있음)
+//          예) "이수" + "총신대입구(이수)"
 //
-// 중복 쌍 배열 반환 — 각 요소: { name1, lines1, name2, lines2, distM, mergedLines }
+// KNOWN_SYNONYMS에 keep_separate로 등록된 쌍은 리포트에서 제외
 // ─────────────────────────────────────────
 function detectDuplicates(stationMap) {
   const entries = Array.from(stationMap.entries());
   const pairs = [];
   const seen = new Set();
 
-  // 기본명 추출: 괄호 이전 부분, "역" 접미사 제거
+  // keep_separate 쌍 목록 (리포트 제외용)
+  const keepSeparateKeys = new Set(
+    KNOWN_SYNONYMS
+      .filter((s) => s.action === "keep_separate")
+      .map((s) => [...s.names].sort().join("||"))
+  );
+
   function baseName(name) {
-    return name.replace(/\(.*?\)/g, "").replace(/역$/, "").trim();
+    return name.replace(/\s*\(.*?\)/g, "").replace(/역$/, "").trim();
   }
 
   for (let i = 0; i < entries.length; i++) {
@@ -252,31 +278,60 @@ function detectDuplicates(stationMap) {
       const [nameB, dataB] = entries[j];
       const baseB = baseName(nameB);
 
-      // 기준 1: 기본명이 동일
+      const distM = haversineM(dataA.lat, dataA.lng, dataB.lat, dataB.lng);
+
+      // 기준 A: 기본명 동일
       const sameBase = baseA === baseB;
-      // 기준 2: 한쪽 기본명이 다른쪽을 포함하고 500m 이내
+      // 기준 B: 이름 포함 관계 + 500m 이내
       const nameContains =
         (baseA.length >= 2 && baseB.startsWith(baseA)) ||
         (baseB.length >= 2 && baseA.startsWith(baseB));
+      // 기준 C: 이름 무관 300m 이내
+      const closeProximity = distM <= 300;
 
-      if (!sameBase && !nameContains) continue;
-
-      const distM = haversineM(dataA.lat, dataA.lng, dataB.lat, dataB.lng);
-      if (!sameBase && distM > 500) continue; // 이름 포함 관계는 500m 이내만
+      const match = sameBase || (nameContains && distM <= 500) || closeProximity;
+      if (!match) continue;
 
       const key = [nameA, nameB].sort().join("||");
       if (seen.has(key)) continue;
       seen.add(key);
 
-      // 합쳐야 할 노선 계산 (중복 제거)
-      const mergedLines = [...new Set([...dataA.lines, ...dataB.lines])];
+      // keep_separate 쌍은 리포트 제외
+      if (keepSeparateKeys.has(key)) continue;
 
-      pairs.push({ name1: nameA, lines1: dataA.lines, name2: nameB, lines2: dataB.lines, distM, mergedLines });
+      const mergedLines = [...new Set([...dataA.lines, ...dataB.lines])];
+      const reason = sameBase ? "기본명동일" : closeProximity ? `${distM}m근접` : "이름포함";
+      pairs.push({ name1: nameA, lines1: dataA.lines, name2: nameB, lines2: dataB.lines, distM, mergedLines, reason });
     }
   }
 
-  // 거리 기준 정렬
   return pairs.sort((a, b) => a.distM - b.distM);
+}
+
+// ─────────────────────────────────────────
+// KNOWN_SYNONYMS 동의어 병합 적용
+// ─────────────────────────────────────────
+function applySynonyms(stationMap) {
+  for (const synonym of KNOWN_SYNONYMS) {
+    if (synonym.action === "keep_separate") continue;
+
+    const { names, keepName } = synonym;
+    // 유지할 역 데이터 확보
+    const keepData = stationMap.get(keepName);
+    if (!keepData) continue;
+
+    for (const name of names) {
+      if (name === keepName) continue;
+      const data = stationMap.get(name);
+      if (!data) continue;
+      // 노선 병합
+      for (const line of data.lines) {
+        if (!keepData.lines.includes(line)) keepData.lines.push(line);
+      }
+      stationMap.delete(name);
+      console.log(`  🔀 동의어 병합: "${name}" → "${keepName}" (노선: ${keepData.lines.join(", ")})`);
+    }
+  }
 }
 
 // ─────────────────────────────────────────
@@ -398,29 +453,36 @@ async function main() {
     console.log("  ➖ 삭제된 역: 없음");
   }
 
-  // ── 유사 역명 중복 감지 ───────────────────
-  console.log("\n🔎 유사 역명 중복 검사 중...");
+  // ── KNOWN_SYNONYMS 자동 병합 ─────────────
+  console.log("\n🔀 알려진 동의어 역 자동 병합 중...");
+  applySynonyms(newMap);
+
+  // ── 중복·근접 역 전수 검사 ────────────────
+  // 기준 A: 기본명 동일 / 기준 B: 이름 포함 관계 + 500m / 기준 C: 이름 무관 300m 이내
+  // keep_separate 등록 쌍은 자동 제외
+  console.log("\n🔎 중복·근접 역 전수 검사 중...");
   const dupPairs = detectDuplicates(newMap);
   if (dupPairs.length === 0) {
-    console.log("  ✅ 유사 역명 중복 없음");
+    console.log("  ✅ 중복·근접 역 없음");
   } else {
-    console.log(`\n  ⚠️  중복 의심 역 ${dupPairs.length}쌍 발견 — 저장 전 확인 필요!\n`);
+    console.log(`\n  ⚠️  확인 필요 ${dupPairs.length}쌍 — 저장 전 검토해주세요!\n`);
     console.log(
-      "  역명1".padEnd(28) +
+      "  사유".padEnd(12) +
+      "역명1".padEnd(28) +
       "노선1".padEnd(22) +
       "역명2".padEnd(28) +
       "노선2".padEnd(22) +
       "거리(m)".padEnd(10) +
       "합칠 경우 노선"
     );
-    console.log("  " + "-".repeat(122));
-    for (const { name1, lines1, name2, lines2, distM, mergedLines } of dupPairs) {
+    console.log("  " + "-".repeat(134));
+    for (const { name1, lines1, name2, lines2, distM, mergedLines, reason } of dupPairs) {
       console.log(
-        `  ${name1.padEnd(26)}  ${lines1.join(",").padEnd(20)}  ${name2.padEnd(26)}  ${lines2.join(",").padEnd(20)}  ${String(distM).padEnd(8)}  ${mergedLines.join(", ")}`
+        `  ${(reason ?? "").padEnd(10)}  ${name1.padEnd(26)}  ${lines1.join(",").padEnd(20)}  ${name2.padEnd(26)}  ${lines2.join(",").padEnd(20)}  ${String(distM).padEnd(8)}  ${mergedLines.join(", ")}`
       );
     }
-    console.log("\n  👆 위 역들을 수동으로 합칠 경우 stations.ts를 직접 수정해주세요.");
-    console.log("  ⚠️  stations.ts 저장은 계속 진행됩니다 (중복 포함 상태로 저장됨).");
+    console.log("\n  👆 위 역들이 같은 물리적 역이라면 KNOWN_SYNONYMS에 추가하거나 수동 수정해주세요.");
+    console.log("  stations.ts 저장은 계속 진행됩니다.");
   }
 
   // ── GTX 개통역 체크 ──────────────────────
