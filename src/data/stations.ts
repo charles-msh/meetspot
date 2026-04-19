@@ -935,6 +935,17 @@ export function displayName(name: string): string {
   return name.replace(/\s*\([^)]*\)/g, "").trim();
 }
 
+// 수도권(서울·인천·경기) 노선 — 검색 결과에서 지역 외 동명 역보다 상위 표시
+const METRO_LINES = new Set([
+  "1","2","3","4","5","6","7","8","9",
+  "경의중앙","경춘","공항","수인분당","신분당","신림","경강","서해","우이신설","김포골드",
+  "인천1","인천2","GTX-A","GTX-B","GTX-C","용인",
+]);
+
+function isMetro(station: Station): boolean {
+  return station.line.some((l) => METRO_LINES.has(l));
+}
+
 export function searchStations(query: string): Station[] {
   if (!query.trim()) return [];
   const q = query.trim().toLowerCase();
@@ -946,16 +957,22 @@ export function searchStations(query: string): Station[] {
     })
     .map((s) => {
       const dn = displayName(s.name).toLowerCase();
-      // 관련성 점수: 낮을수록 상위 (표시명 기준 우선, 이름 길이로 2차 정렬)
+      // 관련성 점수 (낮을수록 상위)
       let score: number;
-      if (dn === q)                    score = 0; // 완전 일치
-      else if (dn.startsWith(q))       score = 1; // 표시명 앞에서 일치
-      else if (s.name.toLowerCase().startsWith(q)) score = 2; // 원본명 앞에서 일치
-      else if (dn.includes(q))         score = 3; // 표시명 중간 포함
-      else                             score = 4; // 원본명 중간 포함
-      return { station: s, score };
+      if (dn === q)                              score = 0; // 완전 일치
+      else if (dn.startsWith(q))                 score = 1; // 표시명 앞일치
+      else if (s.name.toLowerCase().startsWith(q)) score = 2; // 원본명 앞일치
+      else if (dn.includes(q))                   score = 3; // 표시명 포함
+      else                                       score = 4; // 원본명 포함
+      // 같은 점수면 수도권 우선, 그 다음 이름 길이 순
+      const region = isMetro(s) ? 0 : 1;
+      return { station: s, score, region };
     })
-    .sort((a, b) => a.score - b.score || a.station.name.length - b.station.name.length)
+    .sort((a, b) =>
+      a.score - b.score ||
+      a.region - b.region ||
+      a.station.name.length - b.station.name.length
+    )
     .slice(0, 10)
     .map(({ station }) => station);
 }
