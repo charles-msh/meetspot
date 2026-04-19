@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { RecommendedStation, Participant } from "@/lib/types";
-import { findStation } from "@/data/stations";
+import { findStation, displayName } from "@/data/stations";
 import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { getLineColor } from "@/lib/lineColors";
 
@@ -315,7 +315,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-base">{station.name}</span>
+                      <span className="font-bold text-base">{displayName(station.name)}</span>
                     </div>
                     <div className="flex gap-1 mt-1">
                       {station.line.map((l) => (

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, Star, ArrowLeft, Search, Loader2, ExternalLink } from "lucide-react";
+import { displayName } from "@/data/stations";
 
 interface Props {
   station: RecommendedStation;
@@ -124,7 +125,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-primary font-medium">약속 장소</p>
-            <p className="text-lg font-bold mt-0.5">{station.name}역 근처</p>
+            <p className="text-lg font-bold mt-0.5">{displayName(station.name)}역 근처</p>
           </div>
           <div className="text-right">
             <div className="flex items-center gap-1 text-sm text-primary justify-end">

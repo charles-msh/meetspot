@@ -9,6 +9,7 @@ import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
 import { MapPin, ChevronLeft, Loader2 } from "lucide-react";
+import { displayName } from "@/data/stations";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
 
@@ -120,7 +121,7 @@ export default function Home() {
             {step === 0 && "어떤 약속인가요?"}
             {step === 1 && "어디서 출발하나요?"}
             {step === 2 && "여기서 만나요!"}
-            {step === 3 && `${selectedStation?.name}역 근처`}
+            {step === 3 && `${selectedStation ? displayName(selectedStation.name) : ""}역 근처`}
           </h2>
         </div>
 

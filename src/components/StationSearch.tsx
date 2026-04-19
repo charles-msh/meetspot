@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { searchStations, type Station } from "@/data/stations";
+import { searchStations, displayName, type Station } from "@/data/stations";
 import { LineBadge } from "@/lib/lineColors";
 import { MapPin, CheckCircle2, Search } from "lucide-react";
 
@@ -18,10 +18,10 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   const [hasSearched, setHasSearched] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const isSelected = value !== "" && query === value;
+  const isSelected = value !== "" && query === displayName(value);
 
   useEffect(() => {
-    setQuery(value);
+    setQuery(value ? displayName(value) : "");
     if (!value) setHasSearched(false);
   }, [value]);
 
@@ -45,7 +45,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   }
 
   function handleSelect(station: Station) {
-    setQuery(station.name);
+    setQuery(displayName(station.name));
     onChange(station.name);
     setIsOpen(false);
     setHasSearched(false);
@@ -86,7 +86,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
                              flex items-center gap-2 transition-colors"
                 >
                   <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-medium">{station.name}</span>
+                  <span className="font-medium">{displayName(station.name)}</span>
                   <div className="flex gap-0.5 ml-auto">
                     {station.line.map((l) => (
                       <LineBadge key={l} line={l} />

@@ -920,12 +920,35 @@ export function findStation(name: string): Station | undefined {
   return stations.find((s) => s.name === name);
 }
 
+// 역명에서 괄호 부가설명 제거 → 화면 표시용
+// 예) "총신대입구(이수)" → "총신대입구", "신촌(경의선)" → "신촌"
+export function displayName(name: string): string {
+  return name.replace(/\s*\([^)]*\)/g, "").trim();
+}
+
 export function searchStations(query: string): Station[] {
   if (!query.trim()) return [];
   const q = query.trim().toLowerCase();
+
   return stations
-    .filter((s) => s.name.toLowerCase().includes(q))
-    .slice(0, 10);
+    .filter((s) => {
+      const dn = displayName(s.name).toLowerCase();
+      return dn.includes(q) || s.name.toLowerCase().includes(q);
+    })
+    .map((s) => {
+      const dn = displayName(s.name).toLowerCase();
+      // 관련성 점수: 낮을수록 상위 (표시명 기준 우선, 이름 길이로 2차 정렬)
+      let score: number;
+      if (dn === q)                    score = 0; // 완전 일치
+      else if (dn.startsWith(q))       score = 1; // 표시명 앞에서 일치
+      else if (s.name.toLowerCase().startsWith(q)) score = 2; // 원본명 앞에서 일치
+      else if (dn.includes(q))         score = 3; // 표시명 중간 포함
+      else                             score = 4; // 원본명 중간 포함
+      return { station: s, score };
+    })
+    .sort((a, b) => a.score - b.score || a.station.name.length - b.station.name.length)
+    .slice(0, 10)
+    .map(({ station }) => station);
 }
 
 export const uniqueStations = stations;
