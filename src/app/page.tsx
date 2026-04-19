@@ -8,7 +8,7 @@ import Step1MeetingType from "@/components/steps/Step1MeetingType";
 import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
-import { MapPin, ChevronLeft } from "lucide-react";
+import { MapPin, ChevronLeft, Loader2 } from "lucide-react";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
 
@@ -25,6 +25,8 @@ export default function Home() {
   const [results, setResults] = useState<RecommendedStation[]>([]);          // 핫플 포함 모드 후보
   const [resultsNoPop, setResultsNoPop] = useState<RecommendedStation[]>([]); // 딱 중간 모드 후보
   const [selectedStation, setSelectedStation] = useState<RecommendedStation | null>(null);
+  // 2단계에서 ODsay 계산 중 여부 (계산 완료 후 3단계로 전환)
+  const [computing, setComputing] = useState(false);
 
   function handleFindMidpoint() {
     const stationData = participants
@@ -33,9 +35,16 @@ export default function Home() {
 
     if (stationData.length < 2) return;
 
-    setResults(findBestStations(stationData, true));       // 핫플 포함
-    setResultsNoPop(findBestStations(stationData, false)); // 위치만
-    setStep(2);
+    setResults(findBestStations(stationData, true));
+    setResultsNoPop(findBestStations(stationData, false));
+    setComputing(true);
+    // setStep(2)는 Step3Result 계산 완료 후 onReady에서 호출
+  }
+
+  function handleResultsReady() {
+    setComputing(false);
+    // 여전히 2단계(위치 입력)에 있을 때만 3단계로 전환
+    setStep((prev) => (prev === 1 ? 2 : prev));
   }
 
   function handleSelectStation(station: RecommendedStation) {
@@ -44,11 +53,14 @@ export default function Home() {
   }
 
   function handleBack() {
+    // 계산 중 뒤로 가면 로딩 해제
+    if (computing) setComputing(false);
     if (step > 0) setStep(step - 1);
   }
 
   function handleRestart() {
     setStep(0);
+    setComputing(false);
     setMeetingInfo({ peopleCount: 2, meetingType: "friends", venueType: "restaurant" });
     setParticipants([]);
     setResults([]);
@@ -121,13 +133,21 @@ export default function Home() {
         )}
 
         {step === 1 && (
-          <Step2Location
-            peopleCount={meetingInfo.peopleCount}
-            participants={participants}
-            onChange={setParticipants}
-            onNext={handleFindMidpoint}
-            onBack={() => setStep(0)}
-          />
+          <div className="relative">
+            <Step2Location
+              peopleCount={meetingInfo.peopleCount}
+              participants={participants}
+              onChange={setParticipants}
+              onNext={handleFindMidpoint}
+              onBack={() => setStep(0)}
+            />
+            {computing && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 z-10">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm text-text-muted">중간 지점을 찾는 중이에요</p>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Step3Result: 결과가 있는 동안 마운트 유지 (hidden으로 숨김)
@@ -138,7 +158,7 @@ export default function Home() {
               results={results}
               resultsNoPop={resultsNoPop}
               participants={participants}
-              active={step === 2}
+              onReady={handleResultsReady}
               onSelect={handleSelectStation}
               onBack={() => setStep(1)}
             />

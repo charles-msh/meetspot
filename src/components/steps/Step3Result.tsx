@@ -12,7 +12,7 @@ interface Props {
   results: RecommendedStation[];        // 핫플 포함 모드 후보 (withPopularity=true)
   resultsNoPop: RecommendedStation[];   // 딱 중간 모드 후보 (withPopularity=false)
   participants: Participant[];
-  active: boolean;                      // step === 2일 때만 true (hidden 상태에서 재계산 방지)
+  onReady: () => void;                  // 두 모드 계산 완료 시 호출 → 2단계→3단계 전환
   onSelect: (station: RecommendedStation) => void;
   onBack: () => void;
 }
@@ -154,7 +154,7 @@ const MODE_DESC: Record<Mode, string> = {
   hotspot: "맛집이 많으면서 각자 오기 편한 곳을 추천해드려요",
 };
 
-export default function Step3Result({ results, resultsNoPop, participants, active, onSelect, onBack }: Props) {
+export default function Step3Result({ results, resultsNoPop, participants, onReady, onSelect, onBack }: Props) {
   const [mode, setMode] = useState<Mode>("location");
   const [calculating, setCalculating] = useState(true);
   const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
@@ -167,6 +167,9 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
   // 비동기 완료 시점의 최신 mode를 읽기 위한 ref
   const modeRef = useRef<Mode>(mode);
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  // onReady ref — 항상 최신 콜백 참조 (effect deps 불필요)
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
 
   // results가 바뀌면(새 검색) 캐시 초기화 + 기본 모드로 리셋
   useEffect(() => {
@@ -180,16 +183,17 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
     }
   }, [results]);
 
-  // 3단계 진입 시 두 모드를 동시에 계산 → 토글 전환은 즉시 표시
+  // results 마운트 직후 두 모드를 동시에 계산 → 완료되면 onReady() 호출해 2→3단계 전환
   useEffect(() => {
-    if (!active || results.length === 0 || participants.length === 0) return;
+    if (results.length === 0 || participants.length === 0) return;
 
-    // 이미 두 모드 모두 캐시됨 → 현재 모드 즉시 표시
+    // 이미 두 모드 모두 캐시됨 → 현재 모드 즉시 표시 후 onReady
     if (cacheRef.current.location && cacheRef.current.hotspot) {
       const data = cacheRef.current[mode]!;
       setDisplayRanked(data.ranked);
       setDisplayTransitMap(data.transitMap);
       setCalculating(false);
+      onReadyRef.current();
       return;
     }
 
@@ -208,10 +212,12 @@ export default function Step3Result({ results, resultsNoPop, participants, activ
       setDisplayRanked(data.ranked);
       setDisplayTransitMap(data.transitMap);
       setCalculating(false);
+      // 2단계 overlay 해제 + 3단계 전환
+      onReadyRef.current();
     });
 
     return () => { cancelled = true; };
-  }, [active, results, resultsNoPop, participants]);
+  }, [results, resultsNoPop, participants]);
 
   // 토글 전환 시 캐시된 데이터 즉시 표시
   useEffect(() => {

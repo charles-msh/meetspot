@@ -213,6 +213,73 @@ async function excelToStationMap(excelPath) {
 }
 
 // ─────────────────────────────────────────
+// 두 좌표 사이 거리 계산 (Haversine, 미터 반환)
+// ─────────────────────────────────────────
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.asin(Math.sqrt(a)));
+}
+
+// ─────────────────────────────────────────
+// 유사 역명 중복 감지 → 저장 전 리포트
+//
+// 기준 1: 괄호 제거 후 기본명이 동일한 역 쌍
+//          예) "수원" + "수원역(분당)" → 기본명 둘 다 "수원"
+// 기준 2: 기본명이 서로를 포함하면서 500m 이내인 역 쌍
+//          예) "종로3가" + "종로3가(탑골공원)"
+//
+// 중복 쌍 배열 반환 — 각 요소: { name1, lines1, name2, lines2, distM, mergedLines }
+// ─────────────────────────────────────────
+function detectDuplicates(stationMap) {
+  const entries = Array.from(stationMap.entries());
+  const pairs = [];
+  const seen = new Set();
+
+  // 기본명 추출: 괄호 이전 부분, "역" 접미사 제거
+  function baseName(name) {
+    return name.replace(/\(.*?\)/g, "").replace(/역$/, "").trim();
+  }
+
+  for (let i = 0; i < entries.length; i++) {
+    const [nameA, dataA] = entries[i];
+    const baseA = baseName(nameA);
+
+    for (let j = i + 1; j < entries.length; j++) {
+      const [nameB, dataB] = entries[j];
+      const baseB = baseName(nameB);
+
+      // 기준 1: 기본명이 동일
+      const sameBase = baseA === baseB;
+      // 기준 2: 한쪽 기본명이 다른쪽을 포함하고 500m 이내
+      const nameContains =
+        (baseA.length >= 2 && baseB.startsWith(baseA)) ||
+        (baseB.length >= 2 && baseA.startsWith(baseB));
+
+      if (!sameBase && !nameContains) continue;
+
+      const distM = haversineM(dataA.lat, dataA.lng, dataB.lat, dataB.lng);
+      if (!sameBase && distM > 500) continue; // 이름 포함 관계는 500m 이내만
+
+      const key = [nameA, nameB].sort().join("||");
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // 합쳐야 할 노선 계산 (중복 제거)
+      const mergedLines = [...new Set([...dataA.lines, ...dataB.lines])];
+
+      pairs.push({ name1: nameA, lines1: dataA.lines, name2: nameB, lines2: dataB.lines, distM, mergedLines });
+    }
+  }
+
+  // 거리 기준 정렬
+  return pairs.sort((a, b) => a.distM - b.distM);
+}
+
+// ─────────────────────────────────────────
 // 현재 stations.ts에서 역 이름 목록 추출
 // ─────────────────────────────────────────
 function getCurrentStationNames() {
@@ -329,6 +396,31 @@ async function main() {
     removed.forEach((n) => console.log(`     - ${n}`));
   } else {
     console.log("  ➖ 삭제된 역: 없음");
+  }
+
+  // ── 유사 역명 중복 감지 ───────────────────
+  console.log("\n🔎 유사 역명 중복 검사 중...");
+  const dupPairs = detectDuplicates(newMap);
+  if (dupPairs.length === 0) {
+    console.log("  ✅ 유사 역명 중복 없음");
+  } else {
+    console.log(`\n  ⚠️  중복 의심 역 ${dupPairs.length}쌍 발견 — 저장 전 확인 필요!\n`);
+    console.log(
+      "  역명1".padEnd(28) +
+      "노선1".padEnd(22) +
+      "역명2".padEnd(28) +
+      "노선2".padEnd(22) +
+      "거리(m)".padEnd(10) +
+      "합칠 경우 노선"
+    );
+    console.log("  " + "-".repeat(122));
+    for (const { name1, lines1, name2, lines2, distM, mergedLines } of dupPairs) {
+      console.log(
+        `  ${name1.padEnd(26)}  ${lines1.join(",").padEnd(20)}  ${name2.padEnd(26)}  ${lines2.join(",").padEnd(20)}  ${String(distM).padEnd(8)}  ${mergedLines.join(", ")}`
+      );
+    }
+    console.log("\n  👆 위 역들을 수동으로 합칠 경우 stations.ts를 직접 수정해주세요.");
+    console.log("  ⚠️  stations.ts 저장은 계속 진행됩니다 (중복 포함 상태로 저장됨).");
   }
 
   // ── GTX 개통역 체크 ──────────────────────
