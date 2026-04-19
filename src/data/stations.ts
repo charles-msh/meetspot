@@ -914,6 +914,20 @@ export const stations: Station[] = [
   { name: "운정중앙", lat: 37.71621, lng: 126.72809, line: ["GTX-A"], popularity: 2 },
   { name: "킨텍스", lat: 37.665175, lng: 126.748386, line: ["GTX-A"], popularity: 2 },
   { name: "동탄", lat: 37.199862, lng: 127.095491, line: ["GTX-A"], popularity: 2 },
+  // 의정부경전철 U-Line (Naver API 좌표 조회 2026-04-19, 민락역은 효자↔송산 중간값 추정)
+  { name: "탑석", lat: 37.733507, lng: 127.088914, line: ["의정부"], popularity: 2 },
+  { name: "어룡", lat: 37.742696, lng: 127.085226, line: ["의정부"], popularity: 2 },
+  { name: "곤제", lat: 37.750534, lng: 127.083846, line: ["의정부"], popularity: 2 },
+  { name: "새말", lat: 37.748869, lng: 127.063785, line: ["의정부"], popularity: 2 },
+  { name: "경전철의정부", lat: 37.737291, lng: 127.043317, line: ["의정부"], popularity: 2 },
+  { name: "흥선", lat: 37.743293, lng: 127.037121, line: ["의정부"], popularity: 2 },
+  { name: "의정부중앙", lat: 37.743684, lng: 127.049663, line: ["의정부"], popularity: 2 },
+  { name: "범골", lat: 37.728796, lng: 127.043664, line: ["의정부"], popularity: 2 },
+  { name: "의정부시청", lat: 37.739242, lng: 127.034866, line: ["의정부"], popularity: 2 },
+  { name: "효자", lat: 37.753924, lng: 127.077234, line: ["의정부"], popularity: 2 },
+  { name: "민락", lat: 37.74561, lng: 127.08222, line: ["의정부"], popularity: 2 },
+  { name: "송산", lat: 37.737281, lng: 127.087209, line: ["의정부"], popularity: 2 },
+  { name: "발곡", lat: 37.726992, lng: 127.05291, line: ["의정부"], popularity: 2 },
 ];
 
 export function findStation(name: string): Station | undefined {
