@@ -920,9 +920,18 @@ export function findStation(name: string): Station | undefined {
   return stations.find((s) => s.name === name);
 }
 
+// 괄호를 유지해야 하는 역명 (역 정체성의 일부이거나 노선 구분에 필요)
+const DISPLAY_NAME_KEEP = new Set([
+  "총신대입구(이수)",  // 4호선+7호선 환승역, 괄호가 역명의 일부
+  "신촌(경의선)",     // 2호선 신촌(지하)과 구분
+  "신촌(지하)",       // 경의중앙선 신촌(경의선)과 구분
+]);
+
 // 역명에서 괄호 부가설명 제거 → 화면 표시용
-// 예) "총신대입구(이수)" → "총신대입구", "신촌(경의선)" → "신촌"
+// 예) "회현(남대문시장)" → "회현", "교대(법원·검찰청)" → "교대"
+// 단, DISPLAY_NAME_KEEP에 등록된 역명은 그대로 반환
 export function displayName(name: string): string {
+  if (DISPLAY_NAME_KEEP.has(name)) return name;
   return name.replace(/\s*\([^)]*\)/g, "").trim();
 }
 
