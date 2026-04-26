@@ -8,7 +8,7 @@ import Step1MeetingType from "@/components/steps/Step1MeetingType";
 import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
-import { MapPin, ChevronLeft, Train } from "lucide-react";
+import { MapPin, ChevronLeft, Train, Users, Star } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
@@ -93,7 +93,9 @@ export default function Home() {
       {computing && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-8">
           <div className="w-14 h-14 rounded-2xl bg-[#111] flex items-center justify-center mb-8">
-            <Train className="w-7 h-7 text-white" />
+            {progressPct === 0 && <Users className="w-7 h-7 text-white" />}
+            {progressPct > 0 && progressPct < 70 && <Train className="w-7 h-7 text-white" />}
+            {progressPct >= 70 && <Star className="w-7 h-7 text-white" />}
           </div>
           <p className="text-[17px] font-bold text-foreground text-center leading-snug mb-1">
             {loadingMsg.main}

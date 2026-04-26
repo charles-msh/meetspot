@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Check } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2 } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 interface Props {
@@ -308,15 +308,13 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                   <div>
                     <p className="font-bold text-sm leading-snug truncate">{place.title}</p>
-                    {place.roadAddress && (
-                      <p className="text-[11px] text-text-muted mt-0.5 truncate">{place.roadAddress}</p>
-                    )}
-                    {place.telephone && (
-                      <p className="text-[11px] text-text-muted">{place.telephone}</p>
-                    )}
+                    {/* 블로그 소개 멘트 (없으면 주소 fallback) */}
+                    <p className="text-[11px] text-text-muted mt-0.5 line-clamp-2 leading-relaxed">
+                      {place.description || place.roadAddress}
+                    </p>
                   </div>
 
-                  {/* 액션 아이콘 행 — 컨테이너 w-5 h-5 (30% 축소) */}
+                  {/* 액션 아이콘 행 */}
                   <div className="flex items-center gap-1 mt-2">
                     {/* 네이버 */}
                     <a
@@ -368,22 +366,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                           fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
                       </svg>
                     </a>
-
-                    {/* 주소 복사 — 핀 아이콘이 배경 대비 크게 */}
-                    <button
-                      onClick={() => copyAddress(i, place.roadAddress || place.address)}
-                      className="w-5 h-5 rounded bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
-                      title="주소 복사"
-                    >
-                      {copiedIdx === i ? (
-                        <Check className="w-3.5 h-3.5 text-[#22C55E]" />
-                      ) : (
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#4A80F0"/>
-                          <circle cx="12" cy="9" r="2.8" fill="white"/>
-                        </svg>
-                      )}
-                    </button>
                   </div>
                 </div>
               </div>

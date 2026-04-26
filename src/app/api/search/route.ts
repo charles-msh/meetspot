@@ -46,37 +46,43 @@ export async function GET(request: NextRequest) {
 
     const localData = { items: combined, nextStart, hasMore, total };
 
-    // 네이버 이미지 검색 API (각 장소의 대표 이미지)
+    // 이미지 + 블로그 소개 멘트 병렬 수집
+    const naverHeaders = {
+      "X-Naver-Client-Id": NAVER_CLIENT_ID,
+      "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+    };
+
     const placesWithImages = await Promise.all(
       (localData.items || []).map(async (item: Record<string, string>) => {
+        const name = stripHtml(item.title);
+
+        const [imgRes, blogRes] = await Promise.allSettled([
+          // 이미지 검색
+          fetch(`https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=1&sort=sim`, { headers: naverHeaders }),
+          // 블로그 검색으로 소개 멘트 수집
+          fetch(`https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(name)}&display=1&sort=sim`, { headers: naverHeaders }),
+        ]);
+
         let imageUrl = "";
-        try {
-          const imgRes = await fetch(
-            `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(
-              stripHtml(item.title)
-            )}&display=1&sort=sim`,
-            {
-              headers: {
-                "X-Naver-Client-Id": NAVER_CLIENT_ID,
-                "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
-              },
-            }
-          );
-          if (imgRes.ok) {
-            const imgData = await imgRes.json();
-            imageUrl = imgData.items?.[0]?.link || imgData.items?.[0]?.thumbnail || "";
-          }
-        } catch {
-          // 이미지 못 가져오면 빈 문자열
+        if (imgRes.status === "fulfilled" && imgRes.value.ok) {
+          const d = await imgRes.value.json();
+          imageUrl = d.items?.[0]?.link || d.items?.[0]?.thumbnail || "";
+        }
+
+        let description = "";
+        if (blogRes.status === "fulfilled" && blogRes.value.ok) {
+          const d = await blogRes.value.json();
+          const raw = d.items?.[0]?.description || "";
+          description = stripHtml(raw).replace(/\s+/g, " ").trim().slice(0, 80);
         }
 
         return {
-          title: stripHtml(item.title),
+          title: name,
           category: item.category || "",
           address: item.address || "",
           roadAddress: item.roadAddress || "",
           link: item.link || "",
-          description: item.description || "",
+          description,
           telephone: item.telephone || "",
           imageUrl,
         };
