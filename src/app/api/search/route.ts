@@ -6,16 +6,18 @@ const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET!;
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const query = searchParams.get("query");
+  // start: 더 보기 시 이어받을 시작 인덱스 (기본 1)
+  const start = parseInt(searchParams.get("start") || "1", 10);
 
   if (!query) {
     return NextResponse.json({ error: "query 파라미터가 필요합니다" }, { status: 400 });
   }
 
   try {
-    // 네이버 지역 검색 API - max display=5이므로 두 페이지 병렬 요청해서 최대 10개 확보
-    const fetchPage = (start: number) =>
+    // 네이버 지역 검색 API - max display=5이므로 두 페이지 병렬 요청해서 10개 확보
+    const fetchPage = (s: number) =>
       fetch(
-        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=5&start=${start}&sort=comment`,
+        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=5&start=${s}&sort=comment`,
         {
           headers: {
             "X-Naver-Client-Id": NAVER_CLIENT_ID,
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
         }
       );
 
-    const [res1, res2] = await Promise.all([fetchPage(1), fetchPage(6)]);
+    const [res1, res2] = await Promise.all([fetchPage(start), fetchPage(start + 5)]);
 
     if (!res1.ok) {
       const err = await res1.text();
@@ -36,7 +38,12 @@ export async function GET(request: NextRequest) {
       res2.ok ? res2.json() : Promise.resolve({ items: [] }),
     ]);
 
-    const localData = { items: [...(data1.items || []), ...(data2.items || [])] };
+    const combined = [...(data1.items || []), ...(data2.items || [])];
+    // 다음 더 보기에서 사용할 start 값 반환
+    const nextStart = start + combined.length;
+    const hasMore = combined.length >= 10;
+
+    const localData = { items: combined, nextStart, hasMore };
 
     // 네이버 이미지 검색 API (각 장소의 대표 이미지)
     const placesWithImages = await Promise.all(
@@ -75,7 +82,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ items: placesWithImages });
+    return NextResponse.json({ items: placesWithImages, nextStart: localData.nextStart, hasMore: localData.hasMore });
   } catch (error) {
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
   }

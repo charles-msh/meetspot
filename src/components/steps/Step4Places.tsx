@@ -83,32 +83,57 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   const [filter, setFilter] = useState("전체");
   const [places, setPlaces] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [nextStart, setNextStart] = useState<number>(1);
+  const [hasMore, setHasMore] = useState(false);
   const venue = venueLabels[venueType];
   const meetingLabel = meetingTypeLabels[meetingType];
 
   const showFoodFilter = venueType === "restaurant";
 
+  const buildQuery = useCallback((foodFilter: string) => {
+    const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
+    const filterPart = foodFilter !== "전체" ? ` ${foodFilter}` : "";
+    return `${station.name}역 ${keyword}${filterPart}`;
+  }, [station.name, meetingType, venueType]);
+
   const fetchPlaces = useCallback(async (foodFilter: string) => {
     setLoading(true);
     setError("");
 
-    const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
-    const filterPart = foodFilter !== "전체" ? ` ${foodFilter}` : "";
-    const query = `${station.name}역 ${keyword}${filterPart}`;
-
     try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(foodFilter))}&start=1`);
       if (!res.ok) throw new Error("API 호출 실패");
       const data = await res.json();
       setPlaces(data.items || []);
+      setNextStart(data.nextStart ?? 11);
+      setHasMore(data.hasMore ?? false);
     } catch {
       setError("장소를 불러오지 못했습니다");
       setPlaces([]);
     } finally {
       setLoading(false);
     }
-  }, [station.name, meetingType, venueType]);
+  }, [buildQuery]);
+
+  const fetchMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+
+    try {
+      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(filter))}&start=${nextStart}`);
+      if (!res.ok) throw new Error("API 호출 실패");
+      const data = await res.json();
+      setPlaces((prev) => [...prev, ...(data.items || [])]);
+      setNextStart(data.nextStart ?? nextStart + 10);
+      setHasMore(data.hasMore ?? false);
+    } catch {
+      // 더 보기 실패는 조용히 무시
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [buildQuery, filter, nextStart, loadingMore]);
 
   useEffect(() => {
     fetchPlaces(filter);
@@ -116,6 +141,10 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
   function handleFilterClick(f: string) {
     setFilter(f);
+  }
+
+  function naverSearchUrl(title: string) {
+    return `https://search.naver.com/search.naver?query=${encodeURIComponent(title)}`;
   }
 
   // 네이버 카테고리에서 간단한 태그 추출
@@ -186,9 +215,13 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           </div>
         ) : (
           places.map((place, i) => (
-            <div
+            <a
               key={i}
-              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-md transition-all"
+              href={naverSearchUrl(place.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block bg-surface border border-border rounded-2xl overflow-hidden
+                         hover:shadow-md active:scale-[0.98] transition-all"
             >
               <div className="flex gap-3 p-3.5">
                 {/* 정방형 썸네일 */}
@@ -228,25 +261,34 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                   </div>
                 </div>
 
-                {/* 외부 링크 */}
-                {place.link && (
-                  <a
-                    href={place.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="self-center p-2 rounded-xl bg-[#F0F0F0] hover:bg-[#E8E8E8] transition-colors shrink-0"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-[#888]" />
-                  </a>
-                )}
+                {/* 네이버 검색 아이콘 */}
+                <div className="self-center p-2 rounded-xl bg-[#F0F0F0] shrink-0">
+                  <ExternalLink className="w-3.5 h-3.5 text-[#888]" />
+                </div>
               </div>
-            </div>
+            </a>
           ))
         )}
       </div>
 
+      {/* 더 보기 버튼 */}
+      {!loading && places.length > 0 && hasMore && (
+        <button
+          onClick={fetchMore}
+          disabled={loadingMore}
+          className="w-full py-3 rounded-2xl text-sm font-medium border border-border
+                     bg-surface hover:bg-surface-hover transition-colors
+                     flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {loadingMore ? (
+            <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+          ) : (
+            "결과 더 보기"
+          )}
+        </button>
+      )}
+
       {/* 하단 버튼 */}
-      {/* 4번: "처음부터 다시"는 파괴적 액션이므로 텍스트 링크로 약화 */}
       <div className="space-y-2 pt-2">
         <button
           onClick={onBack}
