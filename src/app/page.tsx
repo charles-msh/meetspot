@@ -105,12 +105,6 @@ export default function Home() {
             </div>
             <p className="text-right text-xs font-medium text-text-muted">{progressPct}%</p>
           </div>
-          <button
-            onClick={handleBack}
-            className="mt-10 text-sm text-text-muted hover:text-foreground transition-colors"
-          >
-            취소
-          </button>
         </div>
       )}
 

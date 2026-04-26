@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Phone, Copy, Check } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Check } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 interface Props {
@@ -273,59 +273,56 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
                   {/* 액션 아이콘 행 */}
                   <div className="flex items-center gap-1.5 mt-2">
-                    {/* 네이버 */}
+                    {/* 네이버 — 제공받은 SVG 파일 */}
                     <a
                       href={naverSearchUrl(place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-7 h-7 rounded-lg bg-[#E8F8EF] flex items-center justify-center hover:bg-[#d0f0e0] transition-colors"
+                      className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
                       title="네이버 검색"
                     >
-                      <span className="text-[#03C75A] text-[11px] font-extrabold leading-none">N</span>
+                      <img src="/icons/naver.svg" alt="네이버" className="w-7 h-7 object-cover" />
                     </a>
 
-                    {/* 인스타그램 */}
+                    {/* 인스타그램 — 공식 그라디언트 로고 SVG */}
                     <a
                       href={instaSearchUrl(place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-7 h-7 rounded-lg bg-[#FFF0F5] flex items-center justify-center hover:bg-[#ffe0ec] transition-colors"
+                      className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
                       title="인스타그램 검색"
                     >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-                        <circle cx="12" cy="12" r="4"/>
-                        <circle cx="17.5" cy="6.5" r="0.8" fill="#E1306C" stroke="none"/>
+                      <svg className="w-7 h-7" viewBox="0 0 48 48" fill="none">
+                        <defs>
+                          <radialGradient id="ig-bg" cx="30%" cy="107%" r="150%">
+                            <stop offset="0%" stopColor="#fdf497"/>
+                            <stop offset="5%" stopColor="#fdf497"/>
+                            <stop offset="45%" stopColor="#fd5949"/>
+                            <stop offset="60%" stopColor="#d6249f"/>
+                            <stop offset="90%" stopColor="#285AEB"/>
+                          </radialGradient>
+                        </defs>
+                        <rect width="48" height="48" rx="11" fill="url(#ig-bg)"/>
+                        <rect x="13" y="13" width="22" height="22" rx="6" stroke="white" strokeWidth="2.5" fill="none"/>
+                        <circle cx="24" cy="24" r="5.5" stroke="white" strokeWidth="2.5" fill="none"/>
+                        <circle cx="34" cy="14" r="1.5" fill="white"/>
                       </svg>
                     </a>
 
-                    {/* 전화 — 네이버 API가 번호를 안 주므로 업체 페이지로 연결 */}
-                    {place.link ? (
-                      <a
-                        href={place.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-7 h-7 rounded-lg bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
-                        title="네이버 업체 페이지 (전화번호 확인)"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-[#4A80F0]" />
-                      </a>
-                    ) : (
-                      <div className="w-7 h-7 rounded-lg bg-[#F5F5F5] flex items-center justify-center opacity-30 cursor-not-allowed">
-                        <Phone className="w-3.5 h-3.5 text-[#999]" />
-                      </div>
-                    )}
-
-                    {/* 주소 복사 */}
+                    {/* 주소 복사 — 제공받은 핀 아이콘 스타일, UI 조화된 색상 */}
                     <button
                       onClick={() => copyAddress(i, place.roadAddress || place.address)}
-                      className="w-7 h-7 rounded-lg bg-[#F5F5F5] flex items-center justify-center hover:bg-[#EBEBEB] transition-colors"
+                      className="w-7 h-7 rounded-lg bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
                       title="주소 복사"
                     >
                       {copiedIdx === i ? (
                         <Check className="w-3.5 h-3.5 text-[#22C55E]" />
                       ) : (
-                        <Copy className="w-3.5 h-3.5 text-[#666]" />
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#4A80F0"/>
+                          <circle cx="12" cy="9" r="2.5" fill="white"/>
+                          <ellipse cx="12" cy="21.5" rx="3.5" ry="1" fill="#4A80F0" opacity="0.3"/>
+                        </svg>
                       )}
                     </button>
                   </div>
