@@ -200,11 +200,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     return `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(title)}`;
   }
 
-  // place.link가 CatchTable URL이면 직접 사용, 아니면 검색 URL로 fallback
-  function catchtableUrl(link: string, title: string) {
-    if (link && link.includes("catchtable.co.kr")) return link;
-    return `https://www.catchtable.co.kr/ct/place/list?searchWord=${encodeURIComponent(title)}`;
-  }
 
   async function copyAddress(idx: number, address: string) {
     try {
@@ -354,20 +349,22 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                       </svg>
                     </a>
 
-                    {/* 캐치테이블 */}
-                    <a
-                      href={catchtableUrl(place.link, place.title)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
-                      title="캐치테이블 검색"
-                    >
-                      <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
-                        <rect width="48" height="48" rx="10" fill="#FF4B36"/>
-                        <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle"
-                          fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
-                      </svg>
-                    </a>
+                    {/* 캐치테이블 — 등록된 업체만 노출 */}
+                    {place.link?.includes("catchtable.co.kr") && (
+                      <a
+                        href={place.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
+                        title="캐치테이블"
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
+                          <rect width="48" height="48" rx="10" fill="#FF4B36"/>
+                          <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle"
+                            fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
+                        </svg>
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
