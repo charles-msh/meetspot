@@ -1,4 +1,4 @@
-export type MeetingType = "date" | "friends" | "family" | "work" | "other";
+export type MeetingType = "date" | "friends" | "work" | "club" | "business" | "family";
 export type VenueType = "restaurant" | "bar" | "cafe";
 
 export interface MeetingInfo {

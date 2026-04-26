@@ -22,9 +22,10 @@ const venueLabels: Record<VenueType, { label: string; icon: React.ReactNode }> =
 const meetingTypeLabels: Record<MeetingType, string> = {
   date: "데이트",
   friends: "친구 모임",
+  work: "회식",
+  club: "동호회 모임",
+  business: "비즈니스",
   family: "가족 모임",
-  work: "직장 회식",
-  other: "모임",
 };
 
 // 약속 유형별 검색 키워드 (네이버 검색에 반영)
@@ -39,19 +40,24 @@ const meetingKeywords: Record<MeetingType, Record<VenueType, string>> = {
     bar: "술집",
     cafe: "카페",
   },
-  family: {
-    restaurant: "가족 맛집",
-    bar: "와인바",
-    cafe: "카페",
-  },
   work: {
     restaurant: "회식 맛집",
     bar: "회식 술집",
     cafe: "카페",
   },
-  other: {
-    restaurant: "맛집",
-    bar: "술집",
+  club: {
+    restaurant: "모임 맛집",
+    bar: "단체 술집",
+    cafe: "단체 카페",
+  },
+  business: {
+    restaurant: "비즈니스 레스토랑",
+    bar: "분위기 좋은 바",
+    cafe: "조용한 카페",
+  },
+  family: {
+    restaurant: "가족 맛집",
+    bar: "와인바",
     cafe: "카페",
   },
 };
