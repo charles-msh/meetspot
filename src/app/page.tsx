@@ -131,9 +131,12 @@ export default function Home() {
               <MapPin className="w-3.5 h-3.5 text-white" />
             </div>
           )}
-          <span className="font-bold text-[17px] tracking-tight text-foreground">
+          <button
+            onClick={handleRestart}
+            className="font-bold text-[17px] tracking-tight text-foreground hover:opacity-70 transition-opacity"
+          >
             만나<span className="text-primary">spot</span>
-          </span>
+          </button>
         </div>
       </header>
 
