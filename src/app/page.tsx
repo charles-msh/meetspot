@@ -81,7 +81,7 @@ export default function Home() {
   const loadingMsg = getLoadingMessage(progressPct);
 
   return (
-    <div className="min-h-dvh bg-background flex flex-col">
+    <div className="h-dvh bg-background flex flex-col overflow-hidden">
 
       {/* ── 로딩 오버레이 ── */}
       {computing && (
@@ -154,7 +154,7 @@ export default function Home() {
       </div>
 
       {/* ── 메인 ── */}
-      <main className="flex-1 max-w-md mx-auto w-full px-4 pt-6 pb-8">
+      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-6 pb-8">
         <h2 className="text-[22px] font-bold tracking-tight mb-6">
           {step === 0 && "어떤 약속인가요?"}
           {step === 1 && "어디서 출발하나요?"}

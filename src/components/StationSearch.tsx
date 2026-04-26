@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { searchStations, displayName, type Station } from "@/data/stations";
 import { LineBadge } from "@/lib/lineColors";
 import { MapPin, CheckCircle2, Search } from "lucide-react";
@@ -16,14 +16,35 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   const [results, setResults] = useState<Station[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const isSelected = value !== "" && query === displayName(value);
+
+  // 드롭다운 위치를 input 기준으로 계산 (fixed 포지셔닝용)
+  const updateDropdownPos = useCallback(() => {
+    if (!inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
 
   useEffect(() => {
     setQuery(value ? displayName(value) : "");
     if (!value) setHasSearched(false);
   }, [value]);
+
+  // 드롭다운 열릴 때 위치 계산 + 스크롤/리사이즈 시 재계산
+  useEffect(() => {
+    if (!isOpen) return;
+    updateDropdownPos();
+    window.addEventListener("scroll", updateDropdownPos, true);
+    window.addEventListener("resize", updateDropdownPos);
+    return () => {
+      window.removeEventListener("scroll", updateDropdownPos, true);
+      window.removeEventListener("resize", updateDropdownPos);
+    };
+  }, [isOpen, updateDropdownPos]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -40,7 +61,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
     setHasSearched(val.trim().length > 0);
     const found = searchStations(val);
     setResults(found);
-    setIsOpen(val.trim().length > 0); // 결과 없어도 열어서 "없음" 메시지 표시
+    setIsOpen(val.trim().length > 0);
     if (!val) onChange("");
   }
 
@@ -54,17 +75,21 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   return (
     <div ref={wrapperRef} className="relative">
       <div className="relative">
-        {/* 왼쪽 아이콘: 선택됐으면 체크, 아니면 핀 */}
         {isSelected ? (
           <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]" />
         ) : (
           <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         )}
         <input
+          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => handleInput(e.target.value)}
-          onFocus={() => { if (results.length > 0) setIsOpen(true); }}
+          onFocus={() => {
+            if (results.length > 0) {
+              setIsOpen(true);
+            }
+          }}
           placeholder={placeholder}
           className={`w-full pl-9 pr-3 py-2.5 bg-surface border rounded-xl text-base
                      focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/10 focus:border-[#1A1A1A]
@@ -73,14 +98,19 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
         />
       </div>
 
+      {/* 드롭다운: fixed 포지셔닝으로 부모 overflow에 잘리지 않음 */}
       {isOpen && (
-        <ul className="absolute z-50 w-full mt-1 bg-white border border-border rounded-xl shadow-lg
-                       max-h-48 overflow-y-auto">
+        <ul
+          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+          className="fixed z-[200] bg-white border border-border rounded-xl shadow-lg
+                     max-h-48 overflow-y-auto"
+        >
           {results.length > 0 ? (
             results.map((station) => (
               <li key={station.name}>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()} // blur 방지
                   onClick={() => handleSelect(station)}
                   className="w-full px-3 py-2.5 text-left text-sm hover:bg-surface-hover
                              flex items-center gap-2 transition-colors"
@@ -96,7 +126,6 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
               </li>
             ))
           ) : (
-            /* 3번: 검색 결과 없음 안내 */
             hasSearched && (
               <li className="px-3 py-4 text-center text-sm text-text-muted flex flex-col items-center gap-1.5">
                 <Search className="w-4 h-4" />
