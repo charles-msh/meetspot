@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Check } from "lucide-react";
 import { displayName } from "@/data/stations";
@@ -79,19 +79,28 @@ interface PlaceItem {
   imageUrl: string;
 }
 
+// 캐시 타입: 필터명 → { items, nextStart, hasMore }
+interface CacheEntry { items: PlaceItem[]; nextStart: number; hasMore: boolean; }
+
 export default function Step4Places({ station, venueType, meetingType, onBack, onRestart }: Props) {
   const [filter, setFilter] = useState("전체");
-  const [places, setPlaces] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [nextStart, setNextStart] = useState<number>(1);
-  const [hasMore, setHasMore] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // 필터별 결과 캐시
+  const [cache, setCache] = useState<Map<string, CacheEntry>>(new Map());
+  const prefetchedRef = useRef<Set<string>>(new Set());
+
   const venue = venueLabels[venueType];
   const meetingLabel = meetingTypeLabels[meetingType];
-
   const showFoodFilter = venueType === "restaurant";
+
+  // 현재 필터의 캐시 데이터
+  const current = cache.get(filter);
+  const places = current?.items ?? [];
+  const nextStart = current?.nextStart ?? 11;
+  const hasMore = current?.hasMore ?? false;
 
   const buildQuery = useCallback((foodFilter: string) => {
     const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
@@ -99,56 +108,88 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     return `${station.name}역 ${keyword}${filterPart}`;
   }, [station.name, meetingType, venueType]);
 
-  const fetchPlaces = useCallback(async (foodFilter: string) => {
-    setLoading(true);
-    setError("");
-
+  // 특정 필터 fetch → 캐시 저장
+  const fetchFilter = useCallback(async (f: string, showLoading = false): Promise<boolean> => {
+    if (prefetchedRef.current.has(f)) return true;
+    prefetchedRef.current.add(f);
+    if (showLoading) setLoading(true);
     try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(foodFilter))}&start=1`);
-      if (!res.ok) throw new Error("API 호출 실패");
+      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&start=1`);
+      if (!res.ok) throw new Error();
       const data = await res.json();
-      setPlaces(data.items || []);
-      setNextStart(data.nextStart ?? 11);
-      setHasMore(data.hasMore ?? false);
+      setCache(prev => new Map(prev).set(f, {
+        items: data.items || [],
+        nextStart: data.nextStart ?? 11,
+        hasMore: data.hasMore ?? false,
+      }));
+      return true;
     } catch {
-      setError("장소를 불러오지 못했습니다");
-      setPlaces([]);
+      prefetchedRef.current.delete(f); // 실패 시 재시도 허용
+      return false;
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [buildQuery]);
+
+  // 마운트 시: "전체" 먼저 로드 → 나머지 필터 순차 백그라운드 프리패치
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      setLoading(true);
+      setError("");
+      const ok = await fetchFilter("전체", false);
+      if (!ok) setError("장소를 불러오지 못했습니다");
+      setLoading(false);
+
+      if (!showFoodFilter || cancelled) return;
+      // 나머지 필터 순차적으로 백그라운드 패치 (500ms 간격)
+      const rest = foodFilters.filter(f => f !== "전체");
+      for (const f of rest) {
+        if (cancelled) break;
+        await fetchFilter(f, false);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    init();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [station.name, meetingType, venueType]);
 
   const fetchMore = useCallback(async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-
     try {
       const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(filter))}&start=${nextStart}`);
-      if (!res.ok) throw new Error("API 호출 실패");
+      if (!res.ok) throw new Error();
       const data = await res.json();
-      setPlaces((prev) => {
-        // title+roadAddress 기준 중복 제거
-        const existingKeys = new Set(prev.map((p) => `${p.title}__${p.roadAddress}`));
+      setCache(prev => {
+        const entry = prev.get(filter);
+        if (!entry) return prev;
+        const existingKeys = new Set(entry.items.map(p => `${p.title}__${p.roadAddress}`));
         const newItems = (data.items || []).filter(
           (p: PlaceItem) => !existingKeys.has(`${p.title}__${p.roadAddress}`)
         );
-        return [...prev, ...newItems];
+        return new Map(prev).set(filter, {
+          items: [...entry.items, ...newItems],
+          nextStart: data.nextStart ?? nextStart + 10,
+          hasMore: data.hasMore ?? false,
+        });
       });
-      setNextStart(data.nextStart ?? nextStart + 10);
-      setHasMore(data.hasMore ?? false);
     } catch {
-      // 더 보기 실패는 조용히 무시
+      // 조용히 무시
     } finally {
       setLoadingMore(false);
     }
   }, [buildQuery, filter, nextStart, loadingMore]);
 
-  useEffect(() => {
-    fetchPlaces(filter);
-  }, [fetchPlaces, filter]);
-
-  function handleFilterClick(f: string) {
+  async function handleFilterClick(f: string) {
     setFilter(f);
+    // 아직 캐시 없으면 즉시 fetch (백그라운드가 아직 못 가져온 경우)
+    if (!prefetchedRef.current.has(f)) {
+      setLoading(true);
+      await fetchFilter(f, false);
+      setLoading(false);
+    }
   }
 
   function naverSearchUrl(title: string) {
@@ -157,6 +198,10 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
   function instaSearchUrl(title: string) {
     return `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(title)}`;
+  }
+
+  function catchtableUrl(title: string) {
+    return `https://www.catchtable.co.kr/ct/place/list?searchWord=${encodeURIComponent(title)}`;
   }
 
   async function copyAddress(idx: number, address: string) {
@@ -227,7 +272,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         ) : error ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-sm">{error}</p>
-            <button onClick={() => fetchPlaces(filter)} className="mt-3 text-foreground text-sm font-medium underline">
+            <button onClick={() => { prefetchedRef.current.delete(filter); handleFilterClick(filter); }} className="mt-3 text-foreground text-sm font-medium underline">
               다시 시도
             </button>
           </div>
@@ -311,7 +356,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
                     {/* 캐치테이블 */}
                     <a
-                      href={`https://www.catchtable.co.kr/ct/restaurant/search?input=${encodeURIComponent(place.title)}`}
+                      href={catchtableUrl(place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
