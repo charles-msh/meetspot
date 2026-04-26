@@ -123,7 +123,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
         disabled={!canProceed}
         className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm transition-all
                    bg-primary hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed
-                   shadow-[0_4px_16px_rgba(108,99,255,0.3)]"
+                   shadow-[0_4px_16px_rgba(255,92,92,0.25)]"
       >
         다음으로
       </button>
