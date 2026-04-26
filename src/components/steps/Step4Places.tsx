@@ -271,30 +271,30 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                     )}
                   </div>
 
-                  {/* 액션 아이콘 행 */}
-                  <div className="flex items-center gap-1.5 mt-2">
-                    {/* 네이버 — 제공받은 SVG 파일 */}
+                  {/* 액션 아이콘 행 — 컨테이너 w-5 h-5 (30% 축소) */}
+                  <div className="flex items-center gap-1 mt-2">
+                    {/* 네이버 */}
                     <a
                       href={naverSearchUrl(place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
+                      className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
                       title="네이버 검색"
                     >
-                      <img src="/icons/naver.svg" alt="네이버" className="w-7 h-7 object-cover" />
+                      <img src="/icons/naver.svg" alt="네이버" className="w-5 h-5 object-cover" />
                     </a>
 
-                    {/* 인스타그램 — 공식 그라디언트 로고 SVG */}
+                    {/* 인스타그램 */}
                     <a
                       href={instaSearchUrl(place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-80 transition-opacity"
+                      className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
                       title="인스타그램 검색"
                     >
-                      <svg className="w-7 h-7" viewBox="0 0 48 48" fill="none">
+                      <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
                         <defs>
-                          <radialGradient id="ig-bg" cx="30%" cy="107%" r="150%">
+                          <radialGradient id={`ig-bg-${i}`} cx="30%" cy="107%" r="150%">
                             <stop offset="0%" stopColor="#fdf497"/>
                             <stop offset="5%" stopColor="#fdf497"/>
                             <stop offset="45%" stopColor="#fd5949"/>
@@ -302,26 +302,40 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                             <stop offset="90%" stopColor="#285AEB"/>
                           </radialGradient>
                         </defs>
-                        <rect width="48" height="48" rx="11" fill="url(#ig-bg)"/>
+                        <rect width="48" height="48" rx="11" fill={`url(#ig-bg-${i})`}/>
                         <rect x="13" y="13" width="22" height="22" rx="6" stroke="white" strokeWidth="2.5" fill="none"/>
                         <circle cx="24" cy="24" r="5.5" stroke="white" strokeWidth="2.5" fill="none"/>
                         <circle cx="34" cy="14" r="1.5" fill="white"/>
                       </svg>
                     </a>
 
-                    {/* 주소 복사 — 제공받은 핀 아이콘 스타일, UI 조화된 색상 */}
+                    {/* 캐치테이블 */}
+                    <a
+                      href={`https://www.catchtable.co.kr/ct/restaurant/search?input=${encodeURIComponent(place.title)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
+                      title="캐치테이블 검색"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="10" fill="#FF4B36"/>
+                        <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle"
+                          fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
+                      </svg>
+                    </a>
+
+                    {/* 주소 복사 — 핀 아이콘이 배경 대비 크게 */}
                     <button
                       onClick={() => copyAddress(i, place.roadAddress || place.address)}
-                      className="w-7 h-7 rounded-lg bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
+                      className="w-5 h-5 rounded bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
                       title="주소 복사"
                     >
                       {copiedIdx === i ? (
                         <Check className="w-3.5 h-3.5 text-[#22C55E]" />
                       ) : (
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
                           <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#4A80F0"/>
-                          <circle cx="12" cy="9" r="2.5" fill="white"/>
-                          <ellipse cx="12" cy="21.5" rx="3.5" ry="1" fill="#4A80F0" opacity="0.3"/>
+                          <circle cx="12" cy="9" r="2.8" fill="white"/>
                         </svg>
                       )}
                     </button>
