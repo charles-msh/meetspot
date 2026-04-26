@@ -200,7 +200,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     return `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(title)}`;
   }
 
-  function catchtableUrl(title: string) {
+  // place.link가 CatchTable URL이면 직접 사용, 아니면 검색 URL로 fallback
+  function catchtableUrl(link: string, title: string) {
+    if (link && link.includes("catchtable.co.kr")) return link;
     return `https://www.catchtable.co.kr/ct/place/list?searchWord=${encodeURIComponent(title)}`;
   }
 
@@ -354,7 +356,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
                     {/* 캐치테이블 */}
                     <a
-                      href={catchtableUrl(place.title)}
+                      href={catchtableUrl(place.link, place.title)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-5 h-5 rounded overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
