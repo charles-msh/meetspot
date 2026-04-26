@@ -197,7 +197,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   }
 
   function instaSearchUrl(title: string) {
-    return `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(title)}`;
+    // 해시태그 URL: 공백 제거 후 #업체명 태그 페이지로 연결 (로그인 불필요, 앱/웹 모두 작동)
+    const tag = title.replace(/\s+/g, "");
+    return `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}`;
   }
 
 
