@@ -32,7 +32,7 @@ interface RankedData {
   transitMap: Record<string, TransitInfo>;
 }
 
-// 최대 N개씩만 병렬 실행 (ODsay 동시 요청 과부하 방지)
+// 최대 N개씩만 병렬 실행 (워커 풀 패턴)
 async function concurrentMap<T, R>(
   items: T[],
   fn: (item: T) => Promise<R>,
@@ -67,19 +67,23 @@ async function fetchTransitTime(
   }
 }
 
-// ODsay 소요시간 기준으로 후보 재정렬 → 상위 5개 반환
-// usePopularity=true면 인기도 높은 역에 시간 보너스 적용 (핫플 포함 모드)
-async function computeRanking(
+// ① ODsay 호출: 후보역 합집합에 대해 한 번만 수행
+// stationName → 참여자별 소요시간 배열 (null = 조회 실패)
+// limit=3: 서버 retry가 있으므로 429 걱정 없이 3개씩 병렬 처리
+async function fetchTransitCache(
   candidates: RecommendedStation[],
   participants: Participant[],
-  usePopularity: boolean
-): Promise<RankedData> {
-  // 후보역 최대 4개씩 병렬 처리 (참여자 3명이면 동시 ODsay 호출 최대 12건)
-  const allResults = await concurrentMap(candidates, async (station) => {
-    const destStation = findStation(station.name);
-    if (!destStation) return { station, times: [], allValid: false };
+): Promise<Map<string, (number | null)[]>> {
+  const cache = new Map<string, (number | null)[]>();
 
-    const timeResults = await Promise.all(
+  await concurrentMap(candidates, async (station) => {
+    const destStation = findStation(station.name);
+    if (!destStation) {
+      cache.set(station.name, participants.map(() => null));
+      return;
+    }
+
+    const times = await Promise.all(
       participants.map(async (p) => {
         const fromStation = findStation(p.station);
         if (!fromStation) return null;
@@ -92,19 +96,29 @@ async function computeRanking(
       })
     );
 
-    return {
-      station,
-      times: timeResults.filter((t): t is number => t !== null),
-      allValid: timeResults.every((t) => t !== null),
-    };
-  // limit=2: 후보역 2개씩 처리 (참여자 3명이면 동시 ODsay 호출 최대 6건)
-  // 두 모드 순차 실행 시 최대 6건 → ODsay per-second rate limit 여유 확보
-  }, 2);
+    cache.set(station.name, times);
+  }, 3);
 
+  return cache;
+}
+
+// ② 점수 계산: 캐시된 소요시간으로 순위 결정 (동기, I/O 없음)
+// usePopularity=true면 인기도 높은 역에 시간 보너스 적용 (핫플 포함 모드)
+function scoreRanking(
+  candidates: RecommendedStation[],
+  participants: Participant[],
+  usePopularity: boolean,
+  transitCache: Map<string, (number | null)[]>,
+): RankedData {
   const expected = participants.length;
   // ODsay 실패한 참여자는 120분 패널티로 채워 점수 계산
   // → 데이터 부족한 역이 상위에 오르지 않도록 방지
   const MISSING_PENALTY = 120;
+
+  const allResults = candidates.map((station) => {
+    const times = (transitCache.get(station.name) ?? []).filter((t): t is number => t !== null);
+    return { station, times };
+  });
 
   const sorted = allResults
     .filter(({ times }) => times.length > 0)
@@ -202,15 +216,23 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
     setCalculating(true);
     let cancelled = false;
 
-    // 두 모드를 순차 실행 → 최대 동시 ODsay 호출 수 절반으로 감소
-    // (병렬 실행 시 동시 호출 수가 2배가 되어 ODsay 429 rate limit에 걸릴 수 있음)
     (async () => {
-      const locationData = await computeRanking(resultsNoPop, participants, false); // 중간 위치 우선
+      // 두 모드 후보 합집합 (역명 기준 중복 제거) → ODsay 호출을 한 번으로 통합
+      // 기존: 모드1(최대 30건) + 모드2(최대 30건) = 최대 60건 순차
+      // 개선: 합집합(약 12~15개) × 참여자수 = 최대 45건, 3개씩 병렬, 한 번만
+      const allCandidates = [
+        ...new Map([...results, ...resultsNoPop].map((s) => [s.name, s])).values(),
+      ];
+
+      const transitCache = await fetchTransitCache(allCandidates, participants);
       if (cancelled) return;
-      const hotspotData = await computeRanking(results, participants, true);        // 핫플 우선
-      if (cancelled) return;
+
+      // 캐시된 소요시간으로 두 모드 점수 계산 (동기, 즉시)
+      const locationData = scoreRanking(resultsNoPop, participants, false, transitCache);
+      const hotspotData  = scoreRanking(results,      participants, true,  transitCache);
+
       cacheRef.current.location = locationData;
-      cacheRef.current.hotspot = hotspotData;
+      cacheRef.current.hotspot  = hotspotData;
       // 계산 완료 시점의 최신 mode 기준으로 표시
       const data = cacheRef.current[modeRef.current]!;
       setDisplayRanked(data.ranked);
