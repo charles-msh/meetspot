@@ -68,9 +68,9 @@ export function findBestStations(
     };
   });
 
-  // 3. 점수 순 정렬 후 상위 10개 반환 (Step3에서 실제 소요시간 기준으로 재정렬)
-  // 20→10: ODsay 동시 호출 수 절반 절감 (검색 1회당 최대 30건)
+  // 3. 점수 순 정렬 후 상위 7개 반환 (Step3에서 실제 소요시간 기준으로 재정렬)
+  // 10→7: ODsay 호출 30% 감소 (검색 1회당 최대 28건)
   return scored
     .sort((a, b) => a.score - b.score)
-    .slice(0, 10);
+    .slice(0, 7);
 }

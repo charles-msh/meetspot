@@ -147,10 +147,10 @@ function scoreRanking(
       return scoreA - scoreB;
     });
 
-  const top5 = sorted.slice(0, 5);
+  const top3 = sorted.slice(0, 3);
 
   const transitMap: Record<string, TransitInfo> = {};
-  for (const { station, times } of top5) {
+  for (const { station, times } of top3) {
     const hasSameStation = times.some((t) => t === 0);
     const displayTimes = times.map((t) => (t === 0 ? 1 : t));
     const minTime = displayTimes.length > 0 ? Math.min(...displayTimes) : null;
@@ -166,7 +166,7 @@ function scoreRanking(
     };
   }
 
-  return { ranked: top5.map(({ station }) => station), transitMap };
+  return { ranked: top3.map(({ station }) => station), transitMap };
 }
 
 const MODE_LABELS: Record<Mode, string> = {
