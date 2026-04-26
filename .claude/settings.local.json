@@ -8,7 +8,17 @@
       "Bash(git init:*)",
       "Bash(git config:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npx tsc *)",
+      "Bash(node -e ' *)",
+      "Bash(grep -n \"^//\" \"C:\\\\Users\\\\Charles\\\\Desktop\\\\meetspot\\\\src\\\\data\\\\stations.ts\")",
+      "WebSearch",
+      "WebFetch(domain:ko.wikipedia.org)",
+      "WebFetch(domain:www.data.go.kr)",
+      "Bash(node --input-type=commonjs)",
+      "Bash(npx vercel *)",
+      "Bash(git push *)",
+      "Bash(git checkout *)"
     ]
   }
 }

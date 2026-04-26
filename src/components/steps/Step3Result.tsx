@@ -317,12 +317,12 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
   return (
     <div className="space-y-4">
       {/* 세그먼트 토글 */}
-      <div className="flex bg-surface border border-border rounded-xl p-1">
+      <div className="flex bg-surface rounded-xl p-1 gap-1">
         {(["location", "hotspot"] as Mode[]).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
               mode === m
                 ? "bg-white shadow-sm text-foreground"
                 : "text-text-muted hover:text-foreground"
@@ -333,34 +333,34 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
         ))}
       </div>
 
-      <p className="text-sm text-text-muted">{MODE_DESC[mode]}</p>
+      <p className="text-[13px] text-text-muted">{MODE_DESC[mode]}</p>
 
       {calculating ? (
         <div className="text-center py-16 space-y-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-          <p className="text-sm text-text-muted">실제 이동 시간을 계산하는 중이에요</p>
+          <p className="text-sm text-text-muted">이동 시간을 계산하는 중이에요</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {displayRanked.map((station, i) => (
             <button
               key={station.name}
               onClick={() => onSelect(station)}
-              className={`w-full text-left p-4 rounded-2xl border transition-all hover:shadow-md
+              className={`w-full text-left px-4 py-3.5 rounded-2xl border transition-all active:scale-[0.99]
                 ${i === 0
-                  ? "border-primary bg-primary/5 shadow-[0_2px_12px_rgba(108,99,255,0.15)]"
-                  : "border-border bg-surface hover:bg-surface-hover"
+                  ? "border-primary/30 bg-primary/5 shadow-[0_2px_12px_rgba(255,92,92,0.10)]"
+                  : "border-border bg-white hover:bg-surface"
                 }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                    ${i === 0 ? "bg-primary text-white" : "bg-surface border border-border text-text-muted"}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {/* 순위 번호 */}
+                  <span className={`text-sm font-bold w-5 shrink-0 ${i === 0 ? "text-primary" : "text-text-muted"}`}>
                     {i + 1}
-                  </div>
+                  </span>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-base">{displayName(station.name)}</span>
+                      <span className="font-bold text-[15px]">{displayName(station.name)}</span>
                     </div>
                     <div className="flex gap-1 mt-1">
                       {station.line.map((l) => (
@@ -369,7 +369,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center mt-2 text-xs text-text-muted">
+                    <div className="flex items-center mt-1.5 text-xs text-text-muted">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatTransitTime(displayTransitMap[station.name])}
@@ -377,7 +377,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-text-muted mt-2" />
+                <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
               </div>
             </button>
           ))}

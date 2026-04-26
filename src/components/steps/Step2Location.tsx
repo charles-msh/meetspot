@@ -71,7 +71,7 @@ export default function Step2Location({ peopleCount, participants, onChange, onN
           disabled={!allFilled}
           className="flex-[2] py-3.5 rounded-2xl text-white font-semibold text-sm transition-all
                      bg-primary hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed
-                     shadow-[0_4px_16px_rgba(108,99,255,0.3)]"
+                     shadow-[0_4px_16px_rgba(255,92,92,0.25)]"
         >
           중간 지점 찾기
         </button>
