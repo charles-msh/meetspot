@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { MeetingInfo, Participant, RecommendedStation } from "@/lib/types";
 import { findStation } from "@/data/stations";
 import { findBestStations } from "@/lib/midpoint";
@@ -23,6 +23,12 @@ function getLoadingMessage(pct: number): { main: string; sub: string } {
 
 export default function Home() {
   const [step, setStep] = useState(0);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // 단계 이동 시 항상 최상단으로 스크롤
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [step]);
   const [meetingInfo, setMeetingInfo] = useState<MeetingInfo>({
     peopleCount: 2,
     meetingType: "friends",
@@ -154,7 +160,7 @@ export default function Home() {
       </div>
 
       {/* ── 메인 ── */}
-      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-4 pb-6">
+      <main ref={mainRef} className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-4 pb-6">
         <h2 className="text-[22px] font-bold tracking-tight mb-4">
           {step === 0 && "어떤 약속인가요?"}
           {step === 1 && "어디서 출발하나요?"}
