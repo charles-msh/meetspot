@@ -28,16 +28,16 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
   const canProceed = data.peopleCount >= 2 && data.meetingType && data.venueType;
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-4">
       {/* 인원수 */}
       <div>
-        <label className="block text-sm font-semibold text-foreground mb-3">
+        <label className="block text-sm font-semibold text-foreground mb-2">
           몇 명이서 만나나요?
         </label>
         <div className="flex items-center gap-4">
           <button
             onClick={() => onChange({ ...data, peopleCount: Math.max(2, data.peopleCount - 1) })}
-            className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center
+            className="w-9 h-9 rounded-xl bg-surface border border-border flex items-center justify-center
                        text-xl font-bold hover:bg-surface-hover transition-colors select-none"
           >
             −
@@ -47,7 +47,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
           </span>
           <button
             onClick={() => onChange({ ...data, peopleCount: Math.min(10, data.peopleCount + 1) })}
-            className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center
+            className="w-9 h-9 rounded-xl bg-surface border border-border flex items-center justify-center
                        text-xl font-bold hover:bg-surface-hover transition-colors select-none"
           >
             +
@@ -58,7 +58,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
 
       {/* 약속 유형 */}
       <div>
-        <label className="block text-sm font-semibold text-foreground mb-3">
+        <label className="block text-sm font-semibold text-foreground mb-2">
           어떤 약속인가요?
         </label>
         <div className="grid grid-cols-3 gap-2">
@@ -68,7 +68,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
               <button
                 key={t.value}
                 onClick={() => onChange({ ...data, meetingType: t.value })}
-                className={`flex flex-col items-center gap-2 py-3.5 rounded-2xl border transition-all
+                className={`flex flex-col items-center gap-1.5 py-2.5 rounded-2xl border transition-all
                   ${selected
                     ? "border-[#1A1A1A] bg-[#F5F5F5] text-foreground"
                     : "border-border bg-surface text-text-muted hover:bg-surface-hover"
@@ -84,7 +84,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
 
       {/* 장소 유형 */}
       <div>
-        <label className="block text-sm font-semibold text-foreground mb-3">
+        <label className="block text-sm font-semibold text-foreground mb-2">
           만나서 어딜 가나요?
         </label>
         <div className="grid grid-cols-3 gap-2">
@@ -94,7 +94,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
               <button
                 key={t.value}
                 onClick={() => onChange({ ...data, venueType: t.value })}
-                className={`flex flex-col items-center gap-2 py-3.5 rounded-2xl border transition-all
+                className={`flex flex-col items-center gap-1.5 py-2.5 rounded-2xl border transition-all
                   ${selected
                     ? "border-[#1A1A1A] bg-[#F5F5F5] text-foreground"
                     : "border-border bg-surface text-text-muted hover:bg-surface-hover"
@@ -113,7 +113,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
         </div>
       </div>
 
-      {/* 다음 버튼 — 브랜드 컬러 사용 허용 (주요 CTA) */}
+      {/* 다음 버튼 */}
       <button
         onClick={onNext}
         disabled={!canProceed}

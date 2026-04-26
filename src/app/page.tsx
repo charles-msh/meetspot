@@ -154,8 +154,8 @@ export default function Home() {
       </div>
 
       {/* ── 메인 ── */}
-      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-6 pb-8">
-        <h2 className="text-[22px] font-bold tracking-tight mb-6">
+      <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-4 pb-6">
+        <h2 className="text-[22px] font-bold tracking-tight mb-4">
           {step === 0 && "어떤 약속인가요?"}
           {step === 1 && "어디서 출발하나요?"}
           {step === 2 && "여기서 만나요!"}
