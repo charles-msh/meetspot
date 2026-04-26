@@ -69,37 +69,46 @@ async function fetchTransitTime(
 
 // ① ODsay 호출: 후보역 합집합에 대해 한 번만 수행
 // stationName → 참여자별 소요시간 배열 (null = 조회 실패)
-// limit=3: 서버 retry가 있으므로 429 걱정 없이 3개씩 병렬 처리
+//
+// 글로벌 세마포어 방식: (역 × 참여자) 쌍을 하나의 작업 목록으로 펼친 뒤
+// 전체 동시 ODsay 호출을 최대 4건으로 제한
+// → 참여자 수와 무관하게 429 구조적으로 차단
 async function fetchTransitCache(
   candidates: RecommendedStation[],
   participants: Participant[],
 ): Promise<Map<string, (number | null)[]>> {
-  const cache = new Map<string, (number | null)[]>();
+  // 결과 저장소 초기화 (역별 참여자 수만큼 null로 채움)
+  const resultMap = new Map<string, (number | null)[]>();
+  for (const s of candidates) {
+    resultMap.set(s.name, new Array(participants.length).fill(null));
+  }
 
-  await concurrentMap(candidates, async (station) => {
+  // (역, 참여자) 쌍 전체를 평탄한 작업 목록으로 변환
+  const tasks = candidates.flatMap((station) =>
+    participants.map((p, pIdx) => ({ station, p, pIdx }))
+  );
+
+  // 전역 limit=4: 실제 ODsay 동시 호출 수를 항상 4건 이하로 보장
+  await concurrentMap(tasks, async ({ station, p, pIdx }) => {
     const destStation = findStation(station.name);
-    if (!destStation) {
-      cache.set(station.name, participants.map(() => null));
-      return;
+    const fromStation = findStation(p.station);
+    if (!destStation || !fromStation) return;
+
+    let time: number | null;
+    if (fromStation.name === destStation.name) {
+      time = 0; // 출발지 = 목적지
+    } else {
+      const fetched = await fetchTransitTime(
+        fromStation.lat, fromStation.lng,
+        destStation.lat, destStation.lng
+      );
+      time = fetched !== null ? Math.max(1, fetched) : null;
     }
 
-    const times = await Promise.all(
-      participants.map(async (p) => {
-        const fromStation = findStation(p.station);
-        if (!fromStation) return null;
-        if (fromStation.name === destStation.name) return 0; // 출발지 = 목적지
-        const time = await fetchTransitTime(
-          fromStation.lat, fromStation.lng,
-          destStation.lat, destStation.lng
-        );
-        return time !== null ? Math.max(1, time) : null;
-      })
-    );
+    resultMap.get(station.name)![pIdx] = time;
+  }, 4);
 
-    cache.set(station.name, times);
-  }, 3);
-
-  return cache;
+  return resultMap;
 }
 
 // ② 점수 계산: 캐시된 소요시간으로 순위 결정 (동기, I/O 없음)
