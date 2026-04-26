@@ -42,7 +42,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
           >
             −
           </button>
-          <span className="text-3xl font-bold text-primary w-12 text-center tabular-nums">
+          <span className="text-3xl font-bold text-foreground w-12 text-center tabular-nums">
             {data.peopleCount}
           </span>
           <button
@@ -56,7 +56,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
         </div>
       </div>
 
-      {/* 약속 유형 — 3×2 그리드 */}
+      {/* 약속 유형 */}
       <div>
         <label className="block text-sm font-semibold text-foreground mb-3">
           어떤 약속인가요?
@@ -70,13 +70,11 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
                 onClick={() => onChange({ ...data, meetingType: t.value })}
                 className={`flex flex-col items-center gap-2 py-3.5 rounded-2xl border transition-all
                   ${selected
-                    ? "border-primary bg-primary/5 text-primary shadow-sm"
+                    ? "border-[#1A1A1A] bg-[#F5F5F5] text-foreground"
                     : "border-border bg-surface text-text-muted hover:bg-surface-hover"
                   }`}
               >
-                <span className={selected ? "text-primary" : "text-text-muted"}>
-                  {t.icon}
-                </span>
+                {t.icon}
                 <span className="text-xs font-semibold">{t.label}</span>
               </button>
             );
@@ -84,7 +82,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
         </div>
       </div>
 
-      {/* 장소 유형 — 3열 가로 카드 */}
+      {/* 장소 유형 */}
       <div>
         <label className="block text-sm font-semibold text-foreground mb-3">
           만나서 어딜 가나요?
@@ -98,16 +96,14 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
                 onClick={() => onChange({ ...data, venueType: t.value })}
                 className={`flex flex-col items-center gap-2 py-3.5 rounded-2xl border transition-all
                   ${selected
-                    ? "border-primary bg-primary/5 text-primary shadow-sm"
+                    ? "border-[#1A1A1A] bg-[#F5F5F5] text-foreground"
                     : "border-border bg-surface text-text-muted hover:bg-surface-hover"
                   }`}
               >
-                <span className={selected ? "text-primary" : "text-text-muted"}>
-                  {t.icon}
-                </span>
+                {t.icon}
                 <div className="text-center">
                   <p className="text-xs font-semibold">{t.label}</p>
-                  <p className={`text-[10px] mt-0.5 ${selected ? "text-primary/70" : "text-text-muted"}`}>
+                  <p className={`text-[10px] mt-0.5 ${selected ? "text-[#555]" : "text-text-muted"}`}>
                     {t.desc}
                   </p>
                 </div>
@@ -117,7 +113,7 @@ export default function Step1MeetingType({ data, onChange, onNext }: Props) {
         </div>
       </div>
 
-      {/* 다음 버튼 */}
+      {/* 다음 버튼 — 브랜드 컬러 사용 허용 (주요 CTA) */}
       <button
         onClick={onNext}
         disabled={!canProceed}

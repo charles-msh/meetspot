@@ -337,31 +337,30 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
 
       {calculating ? (
         <div className="text-center py-16 space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-          <p className="text-sm text-text-muted">실제 이동 시간을 계산하는 중이에요</p>
+          <Loader2 className="w-7 h-7 animate-spin text-[#999] mx-auto" />
+          <p className="text-sm text-text-muted">이동 시간을 계산하는 중이에요</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {displayRanked.map((station, i) => (
             <button
               key={station.name}
               onClick={() => onSelect(station)}
-              className={`w-full text-left p-4 rounded-2xl border transition-all hover:shadow-md
+              className={`w-full text-left px-4 py-3.5 rounded-2xl border transition-all active:scale-[0.99]
                 ${i === 0
-                  ? "border-primary bg-primary/5 shadow-[0_2px_12px_rgba(108,99,255,0.15)]"
-                  : "border-border bg-surface hover:bg-surface-hover"
+                  ? "border-[#1A1A1A] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.07)]"
+                  : "border-border bg-white hover:bg-surface"
                 }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                    ${i === 0 ? "bg-primary text-white" : "bg-surface border border-border text-text-muted"}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {/* 순위: 1위만 검정 채움, 나머지는 숫자만 */}
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0
+                    ${i === 0 ? "bg-[#111] text-white" : "text-text-muted"}`}>
                     {i + 1}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-base">{displayName(station.name)}</span>
-                    </div>
+                    <span className="font-bold text-[15px] text-foreground">{displayName(station.name)}</span>
                     <div className="flex gap-1 mt-1">
                       {station.line.map((l) => (
                         <span key={l} className={`${getLineColor(l)} text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium`}>
@@ -369,15 +368,13 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center mt-2 text-xs text-text-muted">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatTransitTime(displayTransitMap[station.name])}
-                      </span>
+                    <div className="flex items-center mt-1.5 text-xs text-text-muted gap-1">
+                      <Clock className="w-3 h-3 shrink-0" />
+                      {formatTransitTime(displayTransitMap[station.name])}
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-text-muted mt-2" />
+                <ChevronRight className="w-4 h-4 text-[#CCC] shrink-0" />
               </div>
             </button>
           ))}

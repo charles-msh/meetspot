@@ -38,8 +38,8 @@ export default function Step2Location({ peopleCount, participants, onChange, onN
         {current.map((p, i) => (
           <div key={i} className="bg-surface border border-border rounded-2xl p-4 space-y-2.5">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="w-3.5 h-3.5 text-primary" />
+              <div className="w-7 h-7 rounded-full bg-[#EBEBEB] flex items-center justify-center">
+                <User className="w-3.5 h-3.5 text-[#888]" />
               </div>
               <input
                 type="text"

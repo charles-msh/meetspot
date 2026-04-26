@@ -127,14 +127,14 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   return (
     <div className="space-y-4">
       {/* 선택된 역 정보 */}
-      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4">
+      <div className="bg-surface border border-border rounded-2xl p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-primary font-medium">약속 장소</p>
+            <p className="text-xs text-text-muted font-medium">약속 장소</p>
             <p className="text-lg font-bold mt-0.5">{displayName(station.name)}역 근처</p>
           </div>
           <div className="text-right">
-            <div className="flex items-center gap-1 text-sm text-primary justify-end">
+            <div className="flex items-center gap-1 text-sm text-foreground justify-end">
               {venue.icon}
               <span className="font-medium">{venue.label}</span>
             </div>
@@ -154,7 +154,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 onClick={() => handleFilterClick(f)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all
                   ${filter === f
-                    ? "bg-primary text-white"
+                    ? "bg-[#111] text-white"
                     : "bg-surface border border-border text-text-muted hover:bg-surface-hover"
                   }`}
               >
@@ -170,13 +170,13 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       <div className="space-y-3">
         {loading ? (
           <div className="flex flex-col items-center py-12 gap-3">
-            <Loader2 className="w-6 h-6 text-primary animate-spin" />
+            <Loader2 className="w-6 h-6 text-[#999] animate-spin" />
             <p className="text-sm text-text-muted">{meetingLabel}에 딱 맞는 장소를 찾는 중...</p>
           </div>
         ) : error ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-sm">{error}</p>
-            <button onClick={() => fetchPlaces(filter)} className="mt-3 text-primary text-sm font-medium">
+            <button onClick={() => fetchPlaces(filter)} className="mt-3 text-foreground text-sm font-medium underline">
               다시 시도
             </button>
           </div>
@@ -199,13 +199,13 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                   onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
                 />
                 <div className="absolute top-2 left-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-primary shadow-sm">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-[#444] shadow-sm">
                     {extractTag(place.category)}
                   </span>
                 </div>
                 {i === 0 && (
                   <div className="absolute top-2 right-2">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary text-white font-bold shadow-sm">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#111] text-white font-bold shadow-sm">
                       TOP
                     </span>
                   </div>
@@ -225,7 +225,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                     )}
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                       {place.category.split(">").slice(-2).map((cat, ci) => (
-                        <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent font-medium">
+                        <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F0F0F0] text-[#666] font-medium">
                           {cat.trim()}
                         </span>
                       ))}
@@ -236,9 +236,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                       href={place.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-3 p-2 rounded-xl bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
+                      className="ml-3 p-2 rounded-xl bg-[#F5F5F5] hover:bg-[#EBEBEB] transition-colors shrink-0"
                     >
-                      <ExternalLink className="w-4 h-4 text-primary" />
+                      <ExternalLink className="w-4 h-4 text-[#888]" />
                     </a>
                   )}
                 </div>
