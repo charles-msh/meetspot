@@ -13,6 +13,7 @@ interface Props {
   resultsNoPop: RecommendedStation[];   // 딱 중간 모드 후보 (withPopularity=false)
   participants: Participant[];
   onReady: () => void;                  // 두 모드 계산 완료 시 호출 → 2단계→3단계 전환
+  onProgress?: (current: number, total: number) => void; // ODsay 진행률 전달
   onSelect: (station: RecommendedStation) => void;
   onBack: () => void;
 }
@@ -76,6 +77,7 @@ async function fetchTransitTime(
 async function fetchTransitCache(
   candidates: RecommendedStation[],
   participants: Participant[],
+  onProgress?: (current: number, total: number) => void,
 ): Promise<Map<string, (number | null)[]>> {
   // 결과 저장소 초기화 (역별 참여자 수만큼 null로 채움)
   const resultMap = new Map<string, (number | null)[]>();
@@ -88,11 +90,18 @@ async function fetchTransitCache(
     participants.map((p, pIdx) => ({ station, p, pIdx }))
   );
 
+  const total = tasks.length;
+  let completed = 0;
+  onProgress?.(0, total);
+
   // 전역 limit=4: 실제 ODsay 동시 호출 수를 항상 4건 이하로 보장
   await concurrentMap(tasks, async ({ station, p, pIdx }) => {
     const destStation = findStation(station.name);
     const fromStation = findStation(p.station);
-    if (!destStation || !fromStation) return;
+    if (!destStation || !fromStation) {
+      onProgress?.(++completed, total);
+      return;
+    }
 
     let time: number | null;
     if (fromStation.name === destStation.name) {
@@ -106,6 +115,7 @@ async function fetchTransitCache(
     }
 
     resultMap.get(station.name)![pIdx] = time;
+    onProgress?.(++completed, total);
   }, 4);
 
   return resultMap;
@@ -179,7 +189,7 @@ const MODE_DESC: Record<Mode, string> = {
   hotspot: "맛집이 많으면서 각자 오기 편한 곳을 추천해드려요",
 };
 
-export default function Step3Result({ results, resultsNoPop, participants, onReady, onSelect, onBack }: Props) {
+export default function Step3Result({ results, resultsNoPop, participants, onReady, onProgress, onSelect, onBack }: Props) {
   const [mode, setMode] = useState<Mode>("location");
   const [calculating, setCalculating] = useState(true);
   const [displayRanked, setDisplayRanked] = useState<RecommendedStation[]>([]);
@@ -233,7 +243,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
         ...new Map([...results, ...resultsNoPop].map((s) => [s.name, s])).values(),
       ];
 
-      const transitCache = await fetchTransitCache(allCandidates, participants);
+      const transitCache = await fetchTransitCache(allCandidates, participants, onProgress);
       if (cancelled) return;
 
       // 캐시된 소요시간으로 두 모드 점수 계산 (동기, 즉시)

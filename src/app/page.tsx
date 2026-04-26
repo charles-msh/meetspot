@@ -8,10 +8,19 @@ import Step1MeetingType from "@/components/steps/Step1MeetingType";
 import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
-import { MapPin, ChevronLeft, Loader2 } from "lucide-react";
+import { MapPin, ChevronLeft, Train } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
+
+// 진행률 구간별 상태 메시지
+function getLoadingMessage(pct: number): { main: string; sub: string } {
+  if (pct === 0)  return { main: "중간 지점 후보를 뽑고 있어요", sub: "잠시만 기다려 주세요" };
+  if (pct < 35)   return { main: "각 역까지 이동 시간을 확인하고 있어요", sub: "실제 대중교통 경로를 계산 중이에요" };
+  if (pct < 70)   return { main: "더 많은 경로를 확인하고 있어요", sub: "조금만 더 기다려 주세요" };
+  if (pct < 95)   return { main: "거의 다 됐어요!", sub: "최적 장소를 추리고 있어요" };
+  return           { main: "결과를 정리하고 있어요", sub: "곧 추천 장소가 나타납니다" };
+}
 
 export default function Home() {
   const [step, setStep] = useState(0);
@@ -23,11 +32,12 @@ export default function Home() {
   });
 
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [results, setResults] = useState<RecommendedStation[]>([]);          // 핫플 포함 모드 후보
-  const [resultsNoPop, setResultsNoPop] = useState<RecommendedStation[]>([]); // 딱 중간 모드 후보
+  const [results, setResults] = useState<RecommendedStation[]>([]);
+  const [resultsNoPop, setResultsNoPop] = useState<RecommendedStation[]>([]);
   const [selectedStation, setSelectedStation] = useState<RecommendedStation | null>(null);
-  // 2단계에서 ODsay 계산 중 여부 (계산 완료 후 3단계로 전환)
   const [computing, setComputing] = useState(false);
+  // ODsay 진행률: { current, total }
+  const [progress, setProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   function handleFindMidpoint() {
     const stationData = participants
@@ -36,15 +46,18 @@ export default function Home() {
 
     if (stationData.length < 2) return;
 
+    setProgress({ current: 0, total: 0 });
     setResults(findBestStations(stationData, true));
     setResultsNoPop(findBestStations(stationData, false));
     setComputing(true);
-    // setStep(2)는 Step3Result 계산 완료 후 onReady에서 호출
+  }
+
+  function handleProgress(current: number, total: number) {
+    setProgress({ current, total });
   }
 
   function handleResultsReady() {
     setComputing(false);
-    // 여전히 2단계(위치 입력)에 있을 때만 3단계로 전환
     setStep((prev) => (prev === 1 ? 2 : prev));
   }
 
@@ -54,7 +67,6 @@ export default function Home() {
   }
 
   function handleBack() {
-    // 계산 중 뒤로 가면 로딩 해제
     if (computing) setComputing(false);
     if (step > 0) setStep(step - 1);
   }
@@ -69,8 +81,54 @@ export default function Home() {
     setSelectedStation(null);
   }
 
+  const progressPct = progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0;
+  const loadingMsg = getLoadingMessage(progressPct);
+
   return (
     <div className="min-h-dvh bg-background flex flex-col">
+      {/* 전체 화면 로딩 오버레이 (계산 중일 때) */}
+      {computing && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-10 gap-10">
+          {/* 아이콘 */}
+          <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center shadow-lg">
+            <Train className="w-10 h-10 text-white" />
+          </div>
+
+          {/* 상태 메시지 */}
+          <div className="text-center space-y-2 w-full">
+            <p className="text-lg font-bold text-foreground transition-all duration-500">
+              {loadingMsg.main}
+            </p>
+            <p className="text-sm text-text-muted transition-all duration-500">
+              {loadingMsg.sub}
+            </p>
+          </div>
+
+          {/* 진행률 바 */}
+          <div className="w-full space-y-3">
+            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <p className="text-right text-sm font-semibold text-primary">
+              {progressPct}%
+            </p>
+          </div>
+
+          {/* 취소 */}
+          <button
+            onClick={handleBack}
+            className="text-sm text-text-muted hover:text-foreground transition-colors"
+          >
+            취소
+          </button>
+        </div>
+      )}
+
       {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-border">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-2">
@@ -134,21 +192,13 @@ export default function Home() {
         )}
 
         {step === 1 && (
-          <div className="relative">
-            <Step2Location
-              peopleCount={meetingInfo.peopleCount}
-              participants={participants}
-              onChange={setParticipants}
-              onNext={handleFindMidpoint}
-              onBack={() => setStep(0)}
-            />
-            {computing && (
-              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 z-10">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm text-text-muted">중간 지점을 찾는 중이에요</p>
-              </div>
-            )}
-          </div>
+          <Step2Location
+            peopleCount={meetingInfo.peopleCount}
+            participants={participants}
+            onChange={setParticipants}
+            onNext={handleFindMidpoint}
+            onBack={() => setStep(0)}
+          />
         )}
 
         {/* Step3Result: 결과가 있는 동안 마운트 유지 (hidden으로 숨김)
@@ -160,6 +210,7 @@ export default function Home() {
               resultsNoPop={resultsNoPop}
               participants={participants}
               onReady={handleResultsReady}
+              onProgress={handleProgress}
               onSelect={handleSelectStation}
               onBack={() => setStep(1)}
             />
