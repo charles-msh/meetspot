@@ -280,78 +280,85 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           places.map((place, i) => (
             <div
               key={i}
-              className="bg-surface border border-border rounded-2xl px-4 py-3 flex items-center gap-3 hover:shadow-sm transition-all"
+              className="bg-surface border border-border rounded-2xl overflow-hidden flex hover:shadow-sm transition-all"
             >
-              {/* 순위 번호 */}
-              <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold
-                ${i === 0 ? "bg-[#111] text-white" : "bg-border text-text-muted"}`}>
-                {i + 1}
-              </span>
-
-              {/* 업체 정보 */}
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm leading-snug line-clamp-2">{place.title}</p>
-                {place.category && (
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {place.category.split(">").pop()?.trim()}
-                  </p>
+              {/* 사진 */}
+              <div className="relative w-[72px] shrink-0 self-stretch">
+                <img
+                  src={place.imageUrl || defaultImage}
+                  alt={place.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+                />
+                {i === 0 && (
+                  <span className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-[#111] text-white font-bold">
+                    TOP
+                  </span>
                 )}
               </div>
 
-              {/* 액션 아이콘 */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                {/* 네이버 */}
-                <a
-                  href={naverSearchUrl(place.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
-                  title="네이버 검색"
-                >
-                  <img src="/icons/naver.svg" alt="네이버" className="w-6 h-6 object-cover" />
-                </a>
+              {/* 업체 정보 + 아이콘 */}
+              <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5">
+                {/* 텍스트 */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm leading-snug line-clamp-2">{place.title}</p>
+                  {place.category && (
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      {place.category.split(">").pop()?.trim()}
+                    </p>
+                  )}
+                </div>
 
-                {/* 인스타그램 */}
-                <a
-                  href={instaSearchUrl(place.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
-                  title="인스타그램 검색"
-                >
-                  <svg className="w-6 h-6" viewBox="0 0 48 48" fill="none">
-                    <defs>
-                      <radialGradient id={`ig-bg-${i}`} cx="30%" cy="107%" r="150%">
-                        <stop offset="0%" stopColor="#fdf497"/>
-                        <stop offset="5%" stopColor="#fdf497"/>
-                        <stop offset="45%" stopColor="#fd5949"/>
-                        <stop offset="60%" stopColor="#d6249f"/>
-                        <stop offset="90%" stopColor="#285AEB"/>
-                      </radialGradient>
-                    </defs>
-                    <rect width="48" height="48" rx="11" fill={`url(#ig-bg-${i})`}/>
-                    <rect x="13" y="13" width="22" height="22" rx="6" stroke="white" strokeWidth="2.5" fill="none"/>
-                    <circle cx="24" cy="24" r="5.5" stroke="white" strokeWidth="2.5" fill="none"/>
-                    <circle cx="34" cy="14" r="1.5" fill="white"/>
-                  </svg>
-                </a>
-
-                {/* 캐치테이블 — 등록된 업체만 노출 */}
-                {place.link?.includes("catchtable.co.kr") && (
+                {/* 액션 아이콘 */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <a
-                    href={place.link}
+                    href={naverSearchUrl(place.title)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center hover:opacity-75 transition-opacity"
-                    title="캐치테이블"
+                    className="w-6 h-6 rounded-lg overflow-hidden hover:opacity-75 transition-opacity"
+                    title="네이버 검색"
+                  >
+                    <img src="/icons/naver.svg" alt="네이버" className="w-6 h-6 object-cover" />
+                  </a>
+                  <a
+                    href={instaSearchUrl(place.title)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-6 h-6 rounded-lg overflow-hidden hover:opacity-75 transition-opacity"
+                    title="인스타그램 검색"
                   >
                     <svg className="w-6 h-6" viewBox="0 0 48 48" fill="none">
-                      <rect width="48" height="48" rx="10" fill="#FF4B36"/>
-                      <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle"
-                        fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
+                      <defs>
+                        <radialGradient id={`ig-bg-${i}`} cx="30%" cy="107%" r="150%">
+                          <stop offset="0%" stopColor="#fdf497"/>
+                          <stop offset="5%" stopColor="#fdf497"/>
+                          <stop offset="45%" stopColor="#fd5949"/>
+                          <stop offset="60%" stopColor="#d6249f"/>
+                          <stop offset="90%" stopColor="#285AEB"/>
+                        </radialGradient>
+                      </defs>
+                      <rect width="48" height="48" rx="11" fill={`url(#ig-bg-${i})`}/>
+                      <rect x="13" y="13" width="22" height="22" rx="6" stroke="white" strokeWidth="2.5" fill="none"/>
+                      <circle cx="24" cy="24" r="5.5" stroke="white" strokeWidth="2.5" fill="none"/>
+                      <circle cx="34" cy="14" r="1.5" fill="white"/>
                     </svg>
                   </a>
-                )}
+                  {place.link?.includes("catchtable.co.kr") && (
+                    <a
+                      href={place.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-6 h-6 rounded-lg overflow-hidden hover:opacity-75 transition-opacity"
+                      title="캐치테이블"
+                    >
+                      <svg className="w-6 h-6" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="10" fill="#FF4B36"/>
+                        <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle"
+                          fill="white" fontSize="22" fontWeight="800" fontFamily="sans-serif">C</text>
+                      </svg>
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))
