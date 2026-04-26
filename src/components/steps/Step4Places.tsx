@@ -241,10 +241,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               key={i}
               className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-md transition-all"
             >
-              {/* 상단: 썸네일 + 텍스트 */}
-              <div className="flex gap-3 p-3.5 pb-3">
+              <div className="flex gap-3 p-3.5">
                 {/* 정방형 썸네일 */}
-                <div className="relative w-[88px] h-[88px] shrink-0 rounded-xl overflow-hidden bg-gray-100">
+                <div className="relative w-[80px] h-[80px] shrink-0 rounded-xl overflow-hidden bg-gray-100">
                   <img
                     src={place.imageUrl || defaultImage}
                     alt={place.title}
@@ -260,7 +259,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                   )}
                 </div>
 
-                {/* 텍스트 정보 */}
+                {/* 텍스트 + 액션 아이콘 */}
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                   <div>
                     <p className="font-bold text-sm leading-snug truncate">{place.title}</p>
@@ -271,79 +270,64 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                       <p className="text-[11px] text-text-muted">{place.telephone}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                    {place.category.split(">").slice(-2).map((cat, ci) => (
-                      <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F0F0F0] text-[#666] font-medium">
-                        {cat.trim()}
-                      </span>
-                    ))}
+
+                  {/* 액션 아이콘 행 */}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    {/* 네이버 */}
+                    <a
+                      href={naverSearchUrl(place.title)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-[#E8F8EF] flex items-center justify-center hover:bg-[#d0f0e0] transition-colors"
+                      title="네이버 검색"
+                    >
+                      <span className="text-[#03C75A] text-[11px] font-extrabold leading-none">N</span>
+                    </a>
+
+                    {/* 인스타그램 */}
+                    <a
+                      href={instaSearchUrl(place.title)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-7 h-7 rounded-lg bg-[#FFF0F5] flex items-center justify-center hover:bg-[#ffe0ec] transition-colors"
+                      title="인스타그램 검색"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                        <circle cx="12" cy="12" r="4"/>
+                        <circle cx="17.5" cy="6.5" r="0.8" fill="#E1306C" stroke="none"/>
+                      </svg>
+                    </a>
+
+                    {/* 전화 */}
+                    {place.telephone ? (
+                      <a
+                        href={`tel:${place.telephone.replace(/-/g, "")}`}
+                        className="w-7 h-7 rounded-lg bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
+                        title="전화 걸기"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-[#4A80F0]" />
+                      </a>
+                    ) : (
+                      <div className="w-7 h-7 rounded-lg bg-[#F5F5F5] flex items-center justify-center opacity-30 cursor-not-allowed">
+                        <Phone className="w-3.5 h-3.5 text-[#999]" />
+                      </div>
+                    )}
+
+                    {/* 주소 복사 */}
+                    <button
+                      onClick={() => copyAddress(i, place.roadAddress || place.address)}
+                      className="w-7 h-7 rounded-lg bg-[#F5F5F5] flex items-center justify-center hover:bg-[#EBEBEB] transition-colors"
+                      title="주소 복사"
+                    >
+                      {copiedIdx === i ? (
+                        <Check className="w-3.5 h-3.5 text-[#22C55E]" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-[#666]" />
+                      )}
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              {/* 하단: 액션 버튼 4개 */}
-              <div className="border-t border-border grid grid-cols-4">
-                {/* 네이버 */}
-                <a
-                  href={naverSearchUrl(place.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col items-center gap-1 py-2.5 hover:bg-surface-hover transition-colors"
-                >
-                  <span className="w-5 h-5 rounded-[5px] bg-[#03C75A] flex items-center justify-center
-                                   text-white text-[10px] font-extrabold leading-none">N</span>
-                  <span className="text-[10px] text-text-muted font-medium">네이버</span>
-                </a>
-
-                {/* 인스타그램 */}
-                <a
-                  href={instaSearchUrl(place.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col items-center gap-1 py-2.5 hover:bg-surface-hover transition-colors
-                             border-l border-border"
-                >
-                  {/* Instagram SVG (lucide 버전 미지원) */}
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-                    <circle cx="12" cy="12" r="4"/>
-                    <circle cx="17.5" cy="6.5" r="1" fill="#E1306C" stroke="none"/>
-                  </svg>
-                  <span className="text-[10px] text-text-muted font-medium">인스타</span>
-                </a>
-
-                {/* 전화 */}
-                {place.telephone ? (
-                  <a
-                    href={`tel:${place.telephone.replace(/-/g, "")}`}
-                    className="flex flex-col items-center gap-1 py-2.5 hover:bg-surface-hover transition-colors
-                               border-l border-border"
-                  >
-                    <Phone className="w-5 h-5 text-[#555]" />
-                    <span className="text-[10px] text-text-muted font-medium">전화</span>
-                  </a>
-                ) : (
-                  <div className="flex flex-col items-center gap-1 py-2.5 opacity-30 border-l border-border cursor-not-allowed">
-                    <Phone className="w-5 h-5 text-[#555]" />
-                    <span className="text-[10px] text-text-muted font-medium">전화</span>
-                  </div>
-                )}
-
-                {/* 주소 복사 */}
-                <button
-                  onClick={() => copyAddress(i, place.roadAddress || place.address)}
-                  className="flex flex-col items-center gap-1 py-2.5 hover:bg-surface-hover transition-colors
-                             border-l border-border"
-                >
-                  {copiedIdx === i ? (
-                    <Check className="w-5 h-5 text-[#22C55E]" />
-                  ) : (
-                    <Copy className="w-5 h-5 text-[#555]" />
-                  )}
-                  <span className={`text-[10px] font-medium ${copiedIdx === i ? "text-[#22C55E]" : "text-text-muted"}`}>
-                    {copiedIdx === i ? "복사됨" : "주소복사"}
-                  </span>
-                </button>
               </div>
             </div>
           ))
