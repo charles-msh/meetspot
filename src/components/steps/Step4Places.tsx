@@ -299,12 +299,14 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                       </svg>
                     </a>
 
-                    {/* 전화 */}
-                    {place.telephone ? (
+                    {/* 전화 — 네이버 API가 번호를 안 주므로 업체 페이지로 연결 */}
+                    {place.link ? (
                       <a
-                        href={`tel:${place.telephone.replace(/-/g, "")}`}
+                        href={place.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="w-7 h-7 rounded-lg bg-[#F0F4FF] flex items-center justify-center hover:bg-[#e0eaff] transition-colors"
-                        title="전화 걸기"
+                        title="네이버 업체 페이지 (전화번호 확인)"
                       >
                         <Phone className="w-3.5 h-3.5 text-[#4A80F0]" />
                       </a>
