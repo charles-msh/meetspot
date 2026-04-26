@@ -39,11 +39,12 @@ export async function GET(request: NextRequest) {
     ]);
 
     const combined = [...(data1.items || []), ...(data2.items || [])];
-    // 다음 더 보기에서 사용할 start 값 반환
+    // 네이버 API가 반환하는 total(전체 결과 수)로 hasMore 정확히 판단
+    const total: number = data1.total ?? 0;
     const nextStart = start + combined.length;
-    const hasMore = combined.length >= 10;
+    const hasMore = nextStart <= total;
 
-    const localData = { items: combined, nextStart, hasMore };
+    const localData = { items: combined, nextStart, hasMore, total };
 
     // 네이버 이미지 검색 API (각 장소의 대표 이미지)
     const placesWithImages = await Promise.all(
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ items: placesWithImages, nextStart: localData.nextStart, hasMore: localData.hasMore });
+    return NextResponse.json({ items: placesWithImages, nextStart: localData.nextStart, hasMore: localData.hasMore, total: localData.total });
   } catch (error) {
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
   }

@@ -125,7 +125,14 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(filter))}&start=${nextStart}`);
       if (!res.ok) throw new Error("API 호출 실패");
       const data = await res.json();
-      setPlaces((prev) => [...prev, ...(data.items || [])]);
+      setPlaces((prev) => {
+        // title+roadAddress 기준 중복 제거
+        const existingKeys = new Set(prev.map((p) => `${p.title}__${p.roadAddress}`));
+        const newItems = (data.items || []).filter(
+          (p: PlaceItem) => !existingKeys.has(`${p.title}__${p.roadAddress}`)
+        );
+        return [...prev, ...newItems];
+      });
       setNextStart(data.nextStart ?? nextStart + 10);
       setHasMore(data.hasMore ?? false);
     } catch {
