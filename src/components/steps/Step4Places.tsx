@@ -63,7 +63,7 @@ const meetingKeywords: Record<MeetingType, Record<VenueType, string>> = {
 };
 
 const foodFilters = [
-  "전체", "한식", "일식", "중식", "양식", "치킨", "삼겹살", "회/초밥", "분식", "피자", "햄버거", "베트남", "태국"
+  "전체", "한식", "일식", "중식", "양식", "패스트푸드"
 ];
 
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
@@ -241,23 +241,20 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       {/* 음식 필터 (식당일 때만) */}
       {/* 5번: 오른쪽 페이드 아웃으로 스크롤 가능 암시 */}
       {showFoodFilter && (
-        <div className="relative">
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-            {foodFilters.map((f) => (
-              <button
-                key={f}
-                onClick={() => handleFilterClick(f)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all
-                  ${filter === f
-                    ? "bg-[#111] text-white"
-                    : "bg-surface border border-border text-text-muted hover:bg-surface-hover"
-                  }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
+        <div className="flex flex-wrap gap-2">
+          {foodFilters.map((f) => (
+            <button
+              key={f}
+              onClick={() => handleFilterClick(f)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all
+                ${filter === f
+                  ? "bg-[#111] text-white"
+                  : "bg-surface border border-border text-text-muted hover:bg-surface-hover"
+                }`}
+            >
+              {f}
+            </button>
+          ))}
         </div>
       )}
 
