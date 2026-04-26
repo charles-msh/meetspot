@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, Star, ArrowLeft, Search, Loader2, ExternalLink } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, ExternalLink } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 interface Props {
@@ -190,58 +190,55 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               key={i}
               className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-md transition-all"
             >
-              {/* 대표 이미지 */}
-              <div className="relative h-36 bg-gray-100">
-                <img
-                  src={place.imageUrl || defaultImage}
-                  alt={place.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
-                />
-                <div className="absolute top-2 left-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-[#444] shadow-sm">
-                    {extractTag(place.category)}
-                  </span>
+              <div className="flex gap-3 p-3.5">
+                {/* 정방형 썸네일 */}
+                <div className="relative w-[88px] h-[88px] shrink-0 rounded-xl overflow-hidden bg-gray-100">
+                  <img
+                    src={place.imageUrl || defaultImage}
+                    alt={place.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+                  />
+                  {i === 0 && (
+                    <div className="absolute top-1.5 left-1.5">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#111] text-white font-bold shadow-sm">
+                        TOP
+                      </span>
+                    </div>
+                  )}
                 </div>
-                {i === 0 && (
-                  <div className="absolute top-2 right-2">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#111] text-white font-bold shadow-sm">
-                      TOP
-                    </span>
-                  </div>
-                )}
-              </div>
 
-              {/* 정보 */}
-              <div className="p-3.5">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold text-sm">{place.title}</span>
+                {/* 텍스트 정보 */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                  <div>
+                    <p className="font-bold text-sm leading-snug truncate">{place.title}</p>
                     {place.roadAddress && (
-                      <p className="text-[11px] text-text-muted mt-1 truncate">{place.roadAddress}</p>
+                      <p className="text-[11px] text-text-muted mt-0.5 truncate">{place.roadAddress}</p>
                     )}
                     {place.telephone && (
                       <p className="text-[11px] text-text-muted">{place.telephone}</p>
                     )}
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                      {place.category.split(">").slice(-2).map((cat, ci) => (
-                        <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F0F0F0] text-[#666] font-medium">
-                          {cat.trim()}
-                        </span>
-                      ))}
-                    </div>
                   </div>
-                  {place.link && (
-                    <a
-                      href={place.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-3 p-2 rounded-xl bg-[#F5F5F5] hover:bg-[#EBEBEB] transition-colors shrink-0"
-                    >
-                      <ExternalLink className="w-4 h-4 text-[#888]" />
-                    </a>
-                  )}
+                  <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                    {place.category.split(">").slice(-2).map((cat, ci) => (
+                      <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F0F0F0] text-[#666] font-medium">
+                        {cat.trim()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                {/* 외부 링크 */}
+                {place.link && (
+                  <a
+                    href={place.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="self-center p-2 rounded-xl bg-[#F0F0F0] hover:bg-[#E8E8E8] transition-colors shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-[#888]" />
+                  </a>
+                )}
               </div>
             </div>
           ))

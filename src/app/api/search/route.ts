@@ -12,23 +12,31 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 네이버 지역 검색 API (장소 정보 + 주소 + 카테고리)
-    const localRes = await fetch(
-      `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=10&sort=comment`,
-      {
-        headers: {
-          "X-Naver-Client-Id": NAVER_CLIENT_ID,
-          "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
-        },
-      }
-    );
+    // 네이버 지역 검색 API - max display=5이므로 두 페이지 병렬 요청해서 최대 10개 확보
+    const fetchPage = (start: number) =>
+      fetch(
+        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=5&start=${start}&sort=comment`,
+        {
+          headers: {
+            "X-Naver-Client-Id": NAVER_CLIENT_ID,
+            "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+          },
+        }
+      );
 
-    if (!localRes.ok) {
-      const err = await localRes.text();
-      return NextResponse.json({ error: "네이버 API 호출 실패", detail: err }, { status: localRes.status });
+    const [res1, res2] = await Promise.all([fetchPage(1), fetchPage(6)]);
+
+    if (!res1.ok) {
+      const err = await res1.text();
+      return NextResponse.json({ error: "네이버 API 호출 실패", detail: err }, { status: res1.status });
     }
 
-    const localData = await localRes.json();
+    const [data1, data2] = await Promise.all([
+      res1.json(),
+      res2.ok ? res2.json() : Promise.resolve({ items: [] }),
+    ]);
+
+    const localData = { items: [...(data1.items || []), ...(data2.items || [])] };
 
     // 네이버 이미지 검색 API (각 장소의 대표 이미지)
     const placesWithImages = await Promise.all(
