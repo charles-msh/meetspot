@@ -305,10 +305,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                   <div>
                     <p className="font-bold text-sm leading-snug truncate">{place.title}</p>
-                    {/* 블로그 소개 멘트 (없으면 주소 fallback) */}
-                    <p className="text-[11px] text-text-muted mt-0.5 line-clamp-2 leading-relaxed">
-                      {place.description || place.roadAddress}
-                    </p>
+                    {place.category && (
+                      <p className="text-[11px] text-text-muted mt-0.5 truncate">
+                        {place.category.split(">").join(" · ")}
+                      </p>
+                    )}
                   </div>
 
                   {/* 액션 아이콘 행 */}
