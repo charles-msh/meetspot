@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Phone, Copy, Check, Instagram } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, Phone, Copy, Check } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 interface Props {
@@ -303,7 +303,12 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                   className="flex flex-col items-center gap-1 py-2.5 hover:bg-surface-hover transition-colors
                              border-l border-border"
                 >
-                  <Instagram className="w-5 h-5 text-[#E1306C]" />
+                  {/* Instagram SVG (lucide 버전 미지원) */}
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#E1306C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <circle cx="17.5" cy="6.5" r="1" fill="#E1306C" stroke="none"/>
+                  </svg>
                   <span className="text-[10px] text-text-muted font-medium">인스타</span>
                 </a>
 
