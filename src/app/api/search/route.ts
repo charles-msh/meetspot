@@ -64,8 +64,9 @@ export async function GET(request: NextRequest) {
         let imageUrls: string[] = [];
         if (imgRes?.ok) {
           const d = await imgRes.json();
+          // thumbnail: Naver CDN URL (hotlink 차단 없음), link: 외부 직링크 (차단 많음)
           imageUrls = (d.items || [])
-            .map((img: Record<string, string>) => img.link || img.thumbnail || "")
+            .map((img: Record<string, string>) => img.thumbnail || img.link || "")
             .filter(Boolean);
         }
 

@@ -86,7 +86,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   // 필터별 결과 캐시
   const [cache, setCache] = useState<Map<string, CacheEntry>>(new Map());
   const prefetchedRef = useRef<Set<string>>(new Set());
@@ -191,32 +190,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     }
   }
 
-  function naverSearchUrl(title: string) {
-    return `https://search.naver.com/search.naver?query=${encodeURIComponent(title)}`;
-  }
-
-  function instaSearchUrl(title: string) {
-    // 해시태그 URL: 공백 제거 후 #업체명 태그 페이지로 연결 (로그인 불필요, 앱/웹 모두 작동)
-    const tag = title.replace(/\s+/g, "");
-    return `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}`;
-  }
-
-
-  async function copyAddress(idx: number, address: string) {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopiedIdx(idx);
-      setTimeout(() => setCopiedIdx(null), 2000);
-    } catch {
-      // clipboard 불가 환경 대비
-    }
-  }
-
-  // 네이버 카테고리에서 간단한 태그 추출
-  function extractTag(category: string): string {
-    const parts = category.split(">");
-    return parts[parts.length - 1]?.trim() || "맛집";
-  }
 
   return (
     <div className="space-y-4">
@@ -297,38 +270,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-                  <a
-                    href={naverSearchUrl(place.title)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-6 h-6 rounded-lg overflow-hidden hover:opacity-75 transition-opacity"
-                    title="네이버 검색"
-                  >
-                    <img src="/icons/naver.svg" alt="네이버" className="w-6 h-6 object-cover" />
-                  </a>
-                  <a
-                    href={instaSearchUrl(place.title)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-6 h-6 rounded-lg overflow-hidden hover:opacity-75 transition-opacity"
-                    title="인스타그램 검색"
-                  >
-                    <svg className="w-6 h-6" viewBox="0 0 48 48" fill="none">
-                      <defs>
-                        <radialGradient id={`ig-bg-${i}`} cx="30%" cy="107%" r="150%">
-                          <stop offset="0%" stopColor="#fdf497"/>
-                          <stop offset="5%" stopColor="#fdf497"/>
-                          <stop offset="45%" stopColor="#fd5949"/>
-                          <stop offset="60%" stopColor="#d6249f"/>
-                          <stop offset="90%" stopColor="#285AEB"/>
-                        </radialGradient>
-                      </defs>
-                      <rect width="48" height="48" rx="11" fill={`url(#ig-bg-${i})`}/>
-                      <rect x="13" y="13" width="22" height="22" rx="6" stroke="white" strokeWidth="2.5" fill="none"/>
-                      <circle cx="24" cy="24" r="5.5" stroke="white" strokeWidth="2.5" fill="none"/>
-                      <circle cx="34" cy="14" r="1.5" fill="white"/>
-                    </svg>
-                  </a>
                   {place.link?.includes("catchtable.co.kr") && (
                     <a
                       href={place.link}
