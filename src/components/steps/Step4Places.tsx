@@ -74,9 +74,8 @@ interface PlaceItem {
   address: string;
   roadAddress: string;
   link: string;
-  description: string;
   telephone: string;
-  imageUrl: string;
+  imageUrls: string[];
 }
 
 // 캐시 타입: 필터명 → { items, nextStart, hasMore }
@@ -348,14 +347,18 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 </div>
               </div>
 
-              {/* 전체 너비 사진 */}
-              <div className="aspect-[2/1] overflow-hidden">
-                <img
-                  src={place.imageUrl || defaultImage}
-                  alt={place.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
-                />
+              {/* 가로 스크롤 사진 스트립 */}
+              <div className="flex gap-1 overflow-x-auto scrollbar-hide px-4 pb-3">
+                {(place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage]).map((url, j) => (
+                  <div key={j} className="shrink-0 w-[100px] h-[100px] rounded-xl overflow-hidden bg-gray-100">
+                    <img
+                      src={url}
+                      alt={`${place.title} ${j + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           ))

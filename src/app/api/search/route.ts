@@ -56,24 +56,17 @@ export async function GET(request: NextRequest) {
       (localData.items || []).map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
 
-        const [imgRes, blogRes] = await Promise.allSettled([
-          // 이미지 검색
-          fetch(`https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=1&sort=sim`, { headers: naverHeaders }),
-          // 블로그 검색으로 소개 멘트 수집
-          fetch(`https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(name)}&display=1&sort=sim`, { headers: naverHeaders }),
-        ]);
+        const imgRes = await fetch(
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=5&sort=sim`,
+          { headers: naverHeaders }
+        ).catch(() => null);
 
-        let imageUrl = "";
-        if (imgRes.status === "fulfilled" && imgRes.value.ok) {
-          const d = await imgRes.value.json();
-          imageUrl = d.items?.[0]?.link || d.items?.[0]?.thumbnail || "";
-        }
-
-        let description = "";
-        if (blogRes.status === "fulfilled" && blogRes.value.ok) {
-          const d = await blogRes.value.json();
-          const raw = d.items?.[0]?.description || "";
-          description = stripHtml(raw).replace(/\s+/g, " ").trim().slice(0, 80);
+        let imageUrls: string[] = [];
+        if (imgRes?.ok) {
+          const d = await imgRes.json();
+          imageUrls = (d.items || [])
+            .map((img: Record<string, string>) => img.link || img.thumbnail || "")
+            .filter(Boolean);
         }
 
         return {
@@ -82,9 +75,8 @@ export async function GET(request: NextRequest) {
           address: item.address || "",
           roadAddress: item.roadAddress || "",
           link: item.link || "",
-          description,
           telephone: item.telephone || "",
-          imageUrl,
+          imageUrls,
         };
       })
     );
