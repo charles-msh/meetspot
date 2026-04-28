@@ -280,37 +280,24 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           places.map((place, i) => (
             <div
               key={i}
-              className="bg-surface border border-border rounded-2xl overflow-hidden flex hover:shadow-sm transition-all"
+              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm transition-all"
             >
-              {/* 사진 */}
-              <div className="relative w-[72px] shrink-0 self-stretch">
-                <img
-                  src={place.imageUrl || defaultImage}
-                  alt={place.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
-                />
-                {i === 0 && (
-                  <span className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-[#111] text-white font-bold">
-                    TOP
-                  </span>
-                )}
-              </div>
-
-              {/* 업체 정보 + 아이콘 */}
-              <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5">
-                {/* 텍스트 */}
+              {/* 업체명 + 카테고리 + 아이콘 */}
+              <div className="px-4 pt-3.5 pb-3 flex items-start gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm leading-snug line-clamp-2">{place.title}</p>
+                  {i === 0 && (
+                    <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-[#111] text-white font-bold mb-1.5">
+                      TOP
+                    </span>
+                  )}
+                  <p className="font-bold text-[15px] leading-snug">{place.title}</p>
                   {place.category && (
-                    <p className="text-[11px] text-text-muted mt-0.5">
+                    <p className="text-[12px] text-text-muted mt-0.5">
                       {place.category.split(">").pop()?.trim()}
                     </p>
                   )}
                 </div>
-
-                {/* 액션 아이콘 */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                   <a
                     href={naverSearchUrl(place.title)}
                     target="_blank"
@@ -359,6 +346,16 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                     </a>
                   )}
                 </div>
+              </div>
+
+              {/* 전체 너비 사진 */}
+              <div className="aspect-[2/1] overflow-hidden">
+                <img
+                  src={place.imageUrl || defaultImage}
+                  alt={place.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+                />
               </div>
             </div>
           ))
