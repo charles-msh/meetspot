@@ -257,11 +257,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               {/* 업체명 + 카테고리 + 아이콘 */}
               <div className="px-4 pt-3.5 pb-3 flex items-start gap-2">
                 <div className="flex-1 min-w-0">
-                  {i === 0 && (
-                    <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-[#111] text-white font-bold mb-1.5">
-                      TOP
-                    </span>
-                  )}
                   <p className="font-bold text-[15px] leading-snug">{place.title}</p>
                   {place.category && (
                     <p className="text-[12px] text-text-muted mt-0.5">
@@ -291,7 +286,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               {/* 가로 스크롤 사진 스트립 */}
               <div className="flex gap-1 overflow-x-auto scrollbar-hide px-4 pb-3">
                 {(place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage]).map((url, j) => (
-                  <div key={j} className="shrink-0 w-[100px] h-[100px] rounded-xl overflow-hidden bg-gray-100">
+                  <div key={j} className="shrink-0 w-[120px] h-[120px] rounded-xl overflow-hidden bg-gray-100">
                     <img
                       src={url}
                       alt={`${place.title} ${j + 1}`}
