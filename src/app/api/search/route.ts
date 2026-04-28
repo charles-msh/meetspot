@@ -38,7 +38,15 @@ export async function GET(request: NextRequest) {
       res2.ok ? res2.json() : Promise.resolve({ items: [] }),
     ]);
 
-    const combined = [...(data1.items || []), ...(data2.items || [])];
+    const raw = [...(data1.items || []), ...(data2.items || [])];
+    // 동일 업체 중복 제거 (title + roadAddress 기준)
+    const seen = new Set<string>();
+    const combined = raw.filter((item: Record<string, string>) => {
+      const key = `${stripHtml(item.title)}__${item.roadAddress || item.address}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     // 네이버 API가 반환하는 total(전체 결과 수)로 hasMore 정확히 판단
     const total: number = data1.total ?? 0;
     const nextStart = start + combined.length;
