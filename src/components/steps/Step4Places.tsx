@@ -286,7 +286,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               {/* 가로 스크롤 사진 스트립 */}
               <div className="flex gap-1 overflow-x-auto scrollbar-hide px-4 pb-3">
                 {(place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage]).map((url, j) => (
-                  <div key={j} className="shrink-0 w-[120px] h-[120px] rounded-xl overflow-hidden bg-gray-100">
+                  <div key={j} className="shrink-0 w-[120px] h-[120px] overflow-hidden bg-gray-100">
                     <img
                       src={url}
                       alt={`${place.title} ${j + 1}`}
