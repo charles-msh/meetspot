@@ -72,6 +72,11 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
             return null;
           }
           const buf = await r.arrayBuffer();
+          // 5KB 미만 = 지나치게 작은 썸네일 → 화질 불량으로 제외
+          if (buf.byteLength < 5000) {
+            console.warn(`[Vision] img[${idx}] 파일 크기 미달: ${buf.byteLength}bytes`);
+            return null;
+          }
           console.log(`[Vision] img[${idx}] fetch 성공: ${buf.byteLength}bytes`);
           return Buffer.from(buf).toString("base64");
         } catch (e) {
