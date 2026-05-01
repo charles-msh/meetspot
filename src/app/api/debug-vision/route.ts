@@ -4,6 +4,8 @@ const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
 
 // Vercel 서버에서 Naver CDN fetch + Vision API 동작 확인용 임시 엔드포인트
 export async function GET() {
+  const keyPreview = GOOGLE_PLACES_API_KEY
+    ? `${GOOGLE_PLACES_API_KEY.slice(0, 8)}...` : "undefined";
   const testUrl =
     "https://search.pstatic.net/common/?type=b150&src=https%3A%2F%2Fldb-phinf.pstatic.net%2F20250115_209%2F1736929842430yFyGK_PNG%2F37%25B8%25AE%25B4%25BA%25BE%25F3_%25B5%25B7%25C4%25DA%25C3%25F7%25B6%25F3%25B8%25E0_%252B_%25B5%25B7%25C4%25AB%25C3%25F7.png";
 
@@ -56,7 +58,8 @@ export async function GET() {
   );
 
   return NextResponse.json({
-    v: 3,
+    v: 4,
+    keyPreview,
     fetchStatus,
     contentType,
     byteLength,
