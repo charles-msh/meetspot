@@ -57,10 +57,31 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
   }
 
   try {
-    const requests = imageUrls.map((url) => ({
-      image: { source: { imageUri: url } },
-      features: [{ type: "LABEL_DETECTION", maxResults: 10 }],
-    }));
+    // Naver CDN은 Google 서버의 직접 접근을 차단 → 우리 서버에서 먼저 fetch해서 base64로 변환
+    const imageContents = await Promise.all(
+      imageUrls.map(async (url) => {
+        try {
+          const r = await fetch(url, {
+            headers: {
+              "Referer": "https://www.naver.com",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+          if (!r.ok) return null;
+          const buf = await r.arrayBuffer();
+          return Buffer.from(buf).toString("base64");
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const requests = imageUrls.map((url, i) => {
+      const b64 = imageContents[i];
+      return b64
+        ? { image: { content: b64 }, features: [{ type: "LABEL_DETECTION", maxResults: 10 }] }
+        : { image: { source: { imageUri: url } }, features: [{ type: "LABEL_DETECTION", maxResults: 10 }] };
+    });
 
     const res = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_PLACES_API_KEY}`,
