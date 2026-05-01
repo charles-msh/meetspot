@@ -58,6 +58,7 @@ export async function GET() {
     byteLength,
     base64Length: base64.length,
     visionStatus: vRes.status,
+    visionError: vRes.ok ? null : vData,
     labels,
   });
 }
