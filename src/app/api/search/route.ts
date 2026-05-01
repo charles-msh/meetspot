@@ -252,7 +252,7 @@ export async function GET(request: NextRequest) {
         let imageUrls: string[] = [];
 
         const imgRes = await fetch(
-          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${stationName}역 맛집`)}&display=10&sort=sim`,
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${stationName}역`)}&display=10&sort=sim`,
           { headers: naverHeaders }
         ).catch(() => null);
 
