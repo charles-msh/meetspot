@@ -242,30 +242,22 @@ export async function GET(request: NextRequest) {
           };
         }
 
-        // 1) Google Places 사진 시도
-        const googlePhotoUrl = await getGooglePhotoUrl(name, stationName);
-
+        // Naver 이미지 10장 수집 → Vision API로 음식 사진 필터링
+        // (Google Places는 외관 사진 위주라 제외)
         let imageUrls: string[] = [];
 
-        if (googlePhotoUrl) {
-          // Google 사진 있으면 1장
-          imageUrls = [googlePhotoUrl];
-        } else {
-          // Naver 이미지 10장 수집 → Vision API로 음식 사진 필터링
-          const imgRes = await fetch(
-            `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=10&sort=sim`,
-            { headers: naverHeaders }
-          ).catch(() => null);
+        const imgRes = await fetch(
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=10&sort=sim`,
+          { headers: naverHeaders }
+        ).catch(() => null);
 
-          if (imgRes?.ok) {
-            const d = await imgRes.json();
-            const naverUrls: string[] = (d.items || [])
-              .map((img: Record<string, string>) => img.thumbnail || img.link || "")
-              .filter(Boolean);
+        if (imgRes?.ok) {
+          const d = await imgRes.json();
+          const naverUrls: string[] = (d.items || [])
+            .map((img: Record<string, string>) => img.thumbnail || img.link || "")
+            .filter(Boolean);
 
-            // Vision API로 음식 사진 필터링
-            imageUrls = await filterFoodImages(naverUrls);
-          }
+          imageUrls = await filterFoodImages(naverUrls);
         }
 
         // Redis에 30일 캐시 저장
