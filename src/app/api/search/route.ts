@@ -128,8 +128,8 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
     scored.sort((a, b) => b.score - a.score);
     const filtered = scored.map((s) => s.url).slice(0, 6);
 
-    // 음식 사진이 하나도 없으면 원본 그대로 최대 6장
-    return filtered.length > 0 ? filtered : imageUrls.slice(0, 6);
+    // 음식 사진이 하나도 없으면 빈 배열 반환 (엉뚱한 이미지 노출 방지)
+    return filtered;
   } catch {
     return imageUrls.slice(0, 6);
   }
@@ -252,7 +252,7 @@ export async function GET(request: NextRequest) {
         let imageUrls: string[] = [];
 
         const imgRes = await fetch(
-          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=10&sort=sim`,
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${stationName}역 맛집`)}&display=10&sort=sim`,
           { headers: naverHeaders }
         ).catch(() => null);
 
