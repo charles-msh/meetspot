@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 
 const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID!;
 const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET!;
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
+
+// Google Places API (New) - 업체명+역이름으로 검색 → 사진 1장 URL 반환
+async function getGooglePhotoUrl(placeName: string, stationName: string): Promise<string> {
+  try {
+    const query = `${placeName} ${stationName}역`;
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": "places.photos",
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: "ko", maxResultCount: 1 }),
+    });
+    if (!res.ok) return "";
+    const data = await res.json();
+    const photoName = data.places?.[0]?.photos?.[0]?.name;
+    if (!photoName) return "";
+
+    // 사진 URL 가져오기
+    const photoRes = await fetch(
+      `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=600&key=${GOOGLE_PLACES_API_KEY}`
+    );
+    if (!photoRes.ok) return "";
+    // 리다이렉트된 실제 이미지 URL 반환
+    return photoRes.url;
+  } catch {
+    return "";
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -60,22 +91,34 @@ export async function GET(request: NextRequest) {
       "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
     };
 
+    // 쿼리에서 역 이름 추출 (예: "강남역 맛집" → "강남")
+    const stationName = query.split("역 ")[0] || query;
+
     const placesWithImages = await Promise.all(
       (localData.items || []).map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
 
-        const imgRes = await fetch(
-          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=5&sort=sim`,
-          { headers: naverHeaders }
-        ).catch(() => null);
+        // 1) Google Places 사진 시도 (실제 업체 사진)
+        const googlePhotoUrl = await getGooglePhotoUrl(name, stationName);
 
         let imageUrls: string[] = [];
-        if (imgRes?.ok) {
-          const d = await imgRes.json();
-          // thumbnail: Naver CDN URL (hotlink 차단 없음), link: 외부 직링크 (차단 많음)
-          imageUrls = (d.items || [])
-            .map((img: Record<string, string>) => img.thumbnail || img.link || "")
-            .filter(Boolean);
+
+        if (googlePhotoUrl) {
+          // Google 사진 있으면 1장만 사용
+          imageUrls = [googlePhotoUrl];
+        } else {
+          // Google 사진 없으면 Naver 이미지 검색 fallback (최대 5장)
+          const imgRes = await fetch(
+            `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=5&sort=sim`,
+            { headers: naverHeaders }
+          ).catch(() => null);
+
+          if (imgRes?.ok) {
+            const d = await imgRes.json();
+            imageUrls = (d.items || [])
+              .map((img: Record<string, string>) => img.thumbnail || img.link || "")
+              .filter(Boolean);
+          }
         }
 
         return {
