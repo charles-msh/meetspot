@@ -7,6 +7,29 @@ const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
 
 const redis = Redis.fromEnv();
 
+// ── Google API 월별 호출 제한 (무료 한도 95% 선에서 차단) ──
+const LIMITS = {
+  places: 950,  // Places API 무료 한도 1,000건
+  vision: 950,  // Vision API 무료 한도 1,000건
+};
+
+function monthKey(api: "places" | "vision") {
+  const now = new Date();
+  return `quota:${api}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function checkAndIncrement(api: "places" | "vision"): Promise<boolean> {
+  try {
+    const key = monthKey(api);
+    const count = await redis.incr(key);
+    // 처음 생성 시 만료일 월말로 설정 (32일이면 다음 달 확실히 넘김)
+    if (count === 1) await redis.expire(key, 60 * 60 * 24 * 32);
+    return count <= LIMITS[api];
+  } catch {
+    return true; // Redis 오류 시 일단 허용
+  }
+}
+
 // 음식 관련 Vision API 라벨
 const FOOD_LABELS = new Set([
   "Food", "Dish", "Cuisine", "Recipe", "Ingredient", "Meal", "Cooking",
@@ -22,6 +45,13 @@ const FOOD_LABELS = new Set([
 // Google Vision API로 이미지 중 음식 사진 필터링 → 상위 6장 반환
 async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
   if (imageUrls.length === 0) return [];
+
+  // 월별 한도 초과 시 Vision API 스킵 → 원본 최대 6장 반환
+  const allowed = await checkAndIncrement("vision");
+  if (!allowed) {
+    console.warn("[Vision API] 월 한도 초과 - fallback");
+    return imageUrls.slice(0, 6);
+  }
 
   try {
     const requests = imageUrls.map((url) => ({
@@ -66,6 +96,13 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
 
 // Google Places API (New) - 업체명+역이름으로 검색 → 사진 1장 URL 반환
 async function getGooglePhotoUrl(placeName: string, stationName: string): Promise<string> {
+  // 월별 한도 초과 시 Places API 스킵
+  const allowed = await checkAndIncrement("places");
+  if (!allowed) {
+    console.warn("[Places API] 월 한도 초과 - fallback");
+    return "";
+  }
+
   try {
     const query = `${placeName} ${stationName}역`;
     const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -207,7 +244,16 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ items: placesWithImages, nextStart, hasMore, total });
+    // 현재 API 사용량 조회 (모니터링용)
+    const [placesCount, visionCount] = await Promise.all([
+      redis.get<number>(monthKey("places")).catch(() => 0),
+      redis.get<number>(monthKey("vision")).catch(() => 0),
+    ]);
+
+    return NextResponse.json({
+      items: placesWithImages, nextStart, hasMore, total,
+      _quota: { places: placesCount ?? 0, vision: visionCount ?? 0, limits: LIMITS },
+    });
   } catch {
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
   }
