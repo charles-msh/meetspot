@@ -254,7 +254,11 @@ export async function GET(request: NextRequest) {
         if (imgRes?.ok) {
           const d = await imgRes.json();
           const naverUrls: string[] = (d.items || [])
-            .map((img: Record<string, string>) => img.thumbnail || img.link || "")
+            .map((img: Record<string, string>) => {
+              const thumb = img.thumbnail || "";
+              // b150(150x150 크롭) → w600(600px 원본 비율) 으로 업스케일
+              return thumb.replace(/type=b\d+/g, "type=w600").replace(/type=a\d+/g, "type=w600");
+            })
             .filter(Boolean);
 
           imageUrls = await filterFoodImages(naverUrls);
