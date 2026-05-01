@@ -163,9 +163,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       setCache(prev => {
         const entry = prev.get(filter);
         if (!entry) return prev;
-        const existingKeys = new Set(entry.items.map(p => `${p.title}__${p.roadAddress}`));
+        const existingKeys = new Set(
+          entry.items.map(p => p.title.replace(/\s/g, "").toLowerCase())
+        );
         const newItems = (data.items || []).filter(
-          (p: PlaceItem) => !existingKeys.has(`${p.title}__${p.roadAddress}`)
+          (p: PlaceItem) => !existingKeys.has(p.title.replace(/\s/g, "").toLowerCase())
         );
         return new Map(prev).set(filter, {
           items: [...entry.items, ...newItems],

@@ -30,7 +30,7 @@ async function checkAndIncrement(api: "places" | "vision"): Promise<boolean> {
   }
 }
 
-// 음식 관련 Vision API 라벨
+// 음식 관련 Vision API 라벨 (메뉴판·빈 그릇 등 비음식 라벨 제외)
 const FOOD_LABELS = new Set([
   "Food", "Dish", "Cuisine", "Recipe", "Ingredient", "Meal", "Cooking",
   "Fast food", "Junk food", "Street food", "Comfort food",
@@ -39,7 +39,6 @@ const FOOD_LABELS = new Set([
   "Meat", "Beef", "Pork", "Chicken", "Seafood", "Fish", "Shrimp",
   "Vegetable", "Salad", "Bread", "Cake", "Dessert", "Snack",
   "Drink", "Beverage", "Coffee", "Beer", "Wine",
-  "Restaurant", "Menu", "Plate", "Bowl", "Tableware",
 ]);
 
 // Google Vision API로 이미지 중 음식 사진 필터링 → 상위 6장 반환
@@ -165,14 +164,19 @@ export async function GET(request: NextRequest) {
     const raw = [...(data1.items || []), ...(data2.items || [])];
     const seen = new Set<string>();
     const combined = raw.filter((item: Record<string, string>) => {
-      const key = `${stripHtml(item.title)}__${item.roadAddress || item.address}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+      const name = stripHtml(item.title).replace(/\s/g, "").toLowerCase();
+      const addr = (item.roadAddress || item.address || "").replace(/\s/g, "");
+      // 이름만으로도 중복 체크 (주소 없는 경우 대비), 이름+주소로도 체크
+      const keyByName = name;
+      const keyByAddr = addr ? `${name}__${addr}` : "";
+      if (seen.has(keyByName)) return false;
+      seen.add(keyByName);
+      if (keyByAddr) seen.add(keyByAddr);
       return true;
     });
 
     const total: number = data1.total ?? 0;
-    const nextStart = start + combined.length;
+    const nextStart = start + 10; // 중복 제거 후 길이 기준이 아닌 Naver에서 소비한 위치 기준
     const hasMore = nextStart <= total;
 
     const naverHeaders = {
