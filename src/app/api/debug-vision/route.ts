@@ -12,6 +12,7 @@ export async function GET() {
   let byteLength = 0;
   let base64: string | null = null;
 
+  let contentType = "";
   try {
     const r = await fetch(testUrl, {
       headers: {
@@ -21,13 +22,14 @@ export async function GET() {
       },
     });
     fetchStatus = r.status;
+    contentType = r.headers.get("content-type") || "";
     if (r.ok) {
       const buf = await r.arrayBuffer();
       byteLength = buf.byteLength;
       base64 = Buffer.from(buf).toString("base64");
     }
   } catch (e) {
-    return NextResponse.json({ error: "fetch 예외", detail: String(e) });
+    return NextResponse.json({ v: 2, error: "fetch 예외", detail: String(e) });
   }
 
   if (!base64) {
@@ -54,11 +56,14 @@ export async function GET() {
   );
 
   return NextResponse.json({
+    v: 3,
     fetchStatus,
+    contentType,
     byteLength,
+    base64Head: base64.slice(0, 20),
     base64Length: base64.length,
     visionStatus: vRes.status,
-    visionError: vRes.ok ? null : vData,
+    visionRaw: vData,
     labels,
   });
 }
