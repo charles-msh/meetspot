@@ -228,6 +228,17 @@ export async function GET(request: NextRequest) {
 
     const stationName = query.split("역 ")[0] || query;
 
+    // 역명 자체가 도시명인 경우 '역' 유지 (서울역→서울 하면 도시 전체로 검색됨)
+    const CITY_STATIONS = new Set([
+      "서울", "부산", "인천", "대전", "대구", "광주", "울산",
+      "수원", "전주", "청주", "춘천", "제주", "목포", "여수",
+      "순천", "창원", "진주", "포항", "경주", "안동", "강릉",
+      "원주", "천안", "평택",
+    ]);
+    const imageStationQuery = CITY_STATIONS.has(stationName)
+      ? `${stationName}역`
+      : stationName;
+
     const placesWithImages = await Promise.all(
       combined.map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
@@ -252,7 +263,7 @@ export async function GET(request: NextRequest) {
         let imageUrls: string[] = [];
 
         const imgRes = await fetch(
-          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${stationName}역`)}&display=10&sort=sim`,
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${imageStationQuery}`)}&display=10&sort=sim`,
           { headers: naverHeaders }
         ).catch(() => null);
 
