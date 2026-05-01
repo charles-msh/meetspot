@@ -59,7 +59,7 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
   try {
     // Naver CDN은 Google 서버의 직접 접근을 차단 → 우리 서버에서 먼저 fetch해서 base64로 변환
     const imageContents = await Promise.all(
-      imageUrls.map(async (url) => {
+      imageUrls.map(async (url, idx) => {
         try {
           const r = await fetch(url, {
             headers: {
@@ -67,14 +67,21 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
           });
-          if (!r.ok) return null;
+          if (!r.ok) {
+            console.warn(`[Vision] img[${idx}] fetch 실패: ${r.status} ${url.slice(0, 80)}`);
+            return null;
+          }
           const buf = await r.arrayBuffer();
+          console.log(`[Vision] img[${idx}] fetch 성공: ${buf.byteLength}bytes`);
           return Buffer.from(buf).toString("base64");
-        } catch {
+        } catch (e) {
+          console.warn(`[Vision] img[${idx}] fetch 예외: ${e}`);
           return null;
         }
       })
     );
+    const b64Count = imageContents.filter(Boolean).length;
+    console.log(`[Vision] base64 변환 성공: ${b64Count}/${imageUrls.length}장`);
 
     const requests = imageUrls.map((url, i) => {
       const b64 = imageContents[i];
@@ -91,17 +98,22 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
         body: JSON.stringify({ requests }),
       }
     );
-    if (!res.ok) return imageUrls.slice(0, 6);
+    if (!res.ok) {
+      console.warn(`[Vision] API 응답 오류: ${res.status}`);
+      return imageUrls.slice(0, 6);
+    }
 
     const data = await res.json();
     const scored: { url: string; score: number }[] = [];
 
     (data.responses || []).forEach((resp: Record<string, unknown>, i: number) => {
       const labels = (resp.labelAnnotations as { description: string; score: number }[]) || [];
+      const topLabels = labels.slice(0, 5).map(l => `${l.description}(${l.score.toFixed(2)})`).join(",");
       // 음식 라벨 점수 합산
       const foodScore = labels
         .filter((l) => FOOD_LABELS.has(l.description))
         .reduce((sum, l) => sum + l.score, 0);
+      console.log(`[Vision] img[${i}] foodScore=${foodScore.toFixed(2)} labels=${topLabels}`);
       if (foodScore >= FOOD_SCORE_THRESHOLD) {
         scored.push({ url: imageUrls[i], score: foodScore });
       }
