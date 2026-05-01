@@ -30,16 +30,20 @@ async function checkAndIncrement(api: "places" | "vision"): Promise<boolean> {
   }
 }
 
-// 음식 관련 Vision API 라벨 (메뉴판·빈 그릇 등 비음식 라벨 제외)
+// 음식 관련 Vision API 라벨
+// 매장 외관·인테리어에도 붙는 "Fast food", "Restaurant", "Menu" 등은 제외
+// 실제 음식·재료가 찍힌 사진만 선별
 const FOOD_LABELS = new Set([
   "Food", "Dish", "Cuisine", "Recipe", "Ingredient", "Meal", "Cooking",
-  "Fast food", "Junk food", "Street food", "Comfort food",
-  "Korean food", "Japanese cuisine", "Chinese food", "Italian food",
-  "Pizza", "Sushi", "Ramen", "Noodle", "Rice", "Soup", "Stew",
-  "Meat", "Beef", "Pork", "Chicken", "Seafood", "Fish", "Shrimp",
-  "Vegetable", "Salad", "Bread", "Cake", "Dessert", "Snack",
-  "Drink", "Beverage", "Coffee", "Beer", "Wine",
+  "Pizza", "Sushi", "Ramen", "Noodle", "Rice", "Soup", "Stew", "Dumpling",
+  "Meat", "Beef", "Pork", "Chicken", "Seafood", "Fish", "Shrimp", "Crab",
+  "Vegetable", "Salad", "Bread", "Cake", "Dessert", "Snack", "Baking",
+  "Drink", "Beverage", "Coffee", "Beer", "Wine", "Cocktail",
+  "Hamburger", "Sandwich", "Taco", "Pasta", "Steak", "Barbecue",
 ]);
+
+// foodScore 최소 임계값: 이 이상이어야 음식 사진으로 분류
+const FOOD_SCORE_THRESHOLD = 0.5;
 
 // Google Vision API로 이미지 중 음식 사진 필터링 → 상위 6장 반환
 async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
@@ -77,7 +81,7 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
       const foodScore = labels
         .filter((l) => FOOD_LABELS.has(l.description))
         .reduce((sum, l) => sum + l.score, 0);
-      if (foodScore > 0) {
+      if (foodScore >= FOOD_SCORE_THRESHOLD) {
         scored.push({ url: imageUrls[i], score: foodScore });
       }
     });
