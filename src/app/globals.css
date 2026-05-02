@@ -51,9 +51,11 @@ body {
 
 /* 가로 스크롤 영역 스크롤바 숨김 */
 .scrollbar-hide {
-  -ms-overflow-style: none;   /* IE, Edge */
-  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;               /* Chrome, Safari */
+  display: none;
+  width: 0;
+  height: 0;
 }
