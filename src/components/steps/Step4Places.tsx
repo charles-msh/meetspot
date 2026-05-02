@@ -182,6 +182,22 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     }
   }, [buildQuery, filter, nextStart, loadingMore]);
 
+  // 무한스크롤: sentinel 요소가 뷰포트에 들어오면 자동으로 더 로드
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, fetchMore]);
+
   async function handleFilterClick(f: string) {
     setFilter(f);
     // 아직 캐시 없으면 즉시 fetch (백그라운드가 아직 못 가져온 경우)
@@ -303,21 +319,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         )}
       </div>
 
-      {/* 더 보기 버튼 */}
-      {!loading && places.length > 0 && hasMore && (
-        <button
-          onClick={fetchMore}
-          disabled={loadingMore}
-          className="w-full py-3 rounded-2xl text-sm font-medium border border-border
-                     bg-surface hover:bg-surface-hover transition-colors
-                     flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {loadingMore ? (
-            <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
-          ) : (
-            "결과 더 보기"
-          )}
-        </button>
+      {/* 무한스크롤 sentinel */}
+      {!loading && places.length > 0 && (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          {loadingMore && <Loader2 className="w-5 h-5 animate-spin text-text-muted" />}
+        </div>
       )}
 
       {/* 하단 버튼 */}
