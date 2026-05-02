@@ -206,6 +206,7 @@ export default function Home() {
             meetingType={meetingInfo.meetingType}
             onBack={() => setStep(2)}
             onRestart={handleRestart}
+            scrollRef={mainRef}
           />
         )}
       </main>

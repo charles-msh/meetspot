@@ -11,6 +11,7 @@ interface Props {
   meetingType: MeetingType;
   onBack: () => void;
   onRestart: () => void;
+  scrollRef?: React.RefObject<HTMLElement | null>;
 }
 
 const venueLabels: Record<VenueType, { label: string; icon: React.ReactNode }> = {
@@ -81,7 +82,7 @@ interface PlaceItem {
 // 캐시 타입: 필터명 → { items, nextStart, hasMore }
 interface CacheEntry { items: PlaceItem[]; nextStart: number; hasMore: boolean; }
 
-export default function Step4Places({ station, venueType, meetingType, onBack, onRestart }: Props) {
+export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, scrollRef }: Props) {
   const [filter, setFilter] = useState("전체");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -182,7 +183,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     }
   }, [buildQuery, filter, nextStart, loadingMore]);
 
-  // 무한스크롤: sentinel 요소가 뷰포트에 들어오면 자동으로 더 로드
+  // 무한스크롤: sentinel 요소가 실제 스크롤 컨테이너(main) 기준으로 감지
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -192,11 +193,14 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           fetchMore();
         }
       },
-      { threshold: 0.1 }
+      {
+        root: scrollRef?.current ?? null,
+        threshold: 0.1,
+      }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, loading, fetchMore]);
+  }, [hasMore, loadingMore, loading, fetchMore, scrollRef]);
 
   async function handleFilterClick(f: string) {
     setFilter(f);
