@@ -121,13 +121,17 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const walkingInfo = (() => {
     const placeLat = hours?.location?.lat;
     const placeLng = hours?.location?.lng;
+    // displayName이 이미 '역'으로 끝나는 경우 중복 방지 (예: 서울역 → '서울역에서', 강남 → '강남역에서')
+    const nameBase = stationDisplayName.endsWith("역")
+      ? stationDisplayName.slice(0, -1)
+      : stationDisplayName;
     if (placeLat && placeLng && stationData) {
       const dist = haversine(stationData.lat, stationData.lng, placeLat, placeLng);
       const mins = walkMins(dist);
-      return `${stationDisplayName}역에서 도보 ${mins}분`;
+      return `${nameBase}역에서 도보 ${mins}분`;
     }
     if (stationData) {
-      return `${stationDisplayName}역 근처`;
+      return `${nameBase}역 근처`;
     }
     return null;
   })();

@@ -20,7 +20,7 @@ declare global {
 export default function KakaoMap({ name, address, lat, lng }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [sdkReady, setSdkReady] = useState(false);
-  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   function initMap() {
     if (!mapRef.current || !window.kakao?.maps) return;
@@ -38,7 +38,6 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
       infowindow.open(map, marker);
     }
 
-    // 좌표가 있으면 바로 렌더
     if (lat && lng) {
       renderAt(lat, lng);
       return;
@@ -51,45 +50,49 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
       if (status === kakao.maps.services.Status.OK && data.length > 0) {
         renderAt(parseFloat(data[0].y), parseFloat(data[0].x));
       } else {
-        setNotFound(true);
+        // Places 검색 실패 → 에러 상태
+        setLoadError(true);
       }
     });
   }
 
+  // sdkReady가 되거나, 컴포넌트 재마운트 시 이미 kakao가 있으면 바로 initMap
   useEffect(() => {
     if (sdkReady) {
-      // sdkReady state가 true로 세팅된 직후
-      window.kakao.maps.load(initMap);
+      initMap();
     } else if (typeof window !== "undefined" && window.kakao?.maps) {
-      // 컴포넌트가 재마운트됐을 때 SDK는 이미 로드돼 있는 경우
-      // (바텀시트 닫았다 다시 열면 Script onLoad가 재실행 안 됨)
-      window.kakao.maps.load(initMap);
+      // 바텀시트 닫았다 재오픈 시 Script onLoad 재실행 안 됨 → 직접 처리
       setSdkReady(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdkReady, lat, lng, name]);
 
+  function handleScriptLoad() {
+    // autoload=true(기본값) 사용 → onLoad 시점에 kakao.maps 완전히 초기화됨
+    // kakao.maps.load() 래퍼 불필요, 바로 사용 가능
+    setSdkReady(true);
+  }
+
   return (
     <div className="w-full h-full relative">
       <Script
-        src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services&autoload=false`}
-        onLoad={() => {
-          window.kakao.maps.load(() => setSdkReady(true));
-        }}
+        src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services`}
+        onLoad={handleScriptLoad}
+        onError={() => setLoadError(true)}
       />
 
       {/* 지도 캔버스 */}
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* 로딩 오버레이 */}
-      {!sdkReady && !notFound && (
+      {/* 로딩 오버레이: SDK 준비 전 */}
+      {!sdkReady && !loadError && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
           <p className="text-sm text-text-muted">지도 불러오는 중...</p>
         </div>
       )}
 
-      {/* 위치 못 찾은 경우 */}
-      {notFound && (
+      {/* 에러 */}
+      {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 gap-2">
           <p className="text-sm text-text-muted">위치를 찾을 수 없어요</p>
           <p className="text-xs text-text-muted">{name}</p>
