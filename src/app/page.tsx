@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { MeetingInfo, Participant, RecommendedStation } from "@/lib/types";
+import type { MeetingInfo, Participant, RecommendedStation, PlaceItem } from "@/lib/types";
 import { findStation } from "@/data/stations";
 import { findBestStations } from "@/lib/midpoint";
 import Step1MeetingType from "@/components/steps/Step1MeetingType";
 import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
+import Step5PlaceDetail from "@/components/steps/Step5PlaceDetail";
 import { MapPin, ChevronLeft, Train, Users, Star } from "lucide-react";
 import { displayName } from "@/data/stations";
 
-const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "상세 보기"];
+const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "장소 목록", "상세 보기"];
 
 function getLoadingMessage(pct: number): { main: string; sub: string } {
   if (pct === 0)  return { main: "중간 지점 후보를 뽑고 있어요", sub: "잠시만 기다려 주세요" };
@@ -38,6 +39,7 @@ export default function Home() {
   const [results, setResults] = useState<RecommendedStation[]>([]);
   const [resultsNoPop, setResultsNoPop] = useState<RecommendedStation[]>([]);
   const [selectedStation, setSelectedStation] = useState<RecommendedStation | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<PlaceItem | null>(null);
   const [computing, setComputing] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
@@ -66,6 +68,11 @@ export default function Home() {
     setStep(3);
   }
 
+  function handleSelectPlace(place: PlaceItem) {
+    setSelectedPlace(place);
+    setStep(4);
+  }
+
   function handleBack() {
     if (computing) setComputing(false);
     if (step > 0) setStep(step - 1);
@@ -79,6 +86,7 @@ export default function Home() {
     setResults([]);
     setResultsNoPop([]);
     setSelectedStation(null);
+    setSelectedPlace(null);
   }
 
   const progressPct = progress.total > 0
@@ -168,6 +176,7 @@ export default function Home() {
           {step === 1 && "어디서 출발하나요?"}
           {step === 2 && "여기서 만나요!"}
           {step === 3 && `${selectedStation ? displayName(selectedStation.name) : ""}역 근처`}
+          {step === 4 && (selectedPlace?.title ?? "")}
         </h2>
 
         {step === 0 && (
@@ -206,7 +215,16 @@ export default function Home() {
             meetingType={meetingInfo.meetingType}
             onBack={() => setStep(2)}
             onRestart={handleRestart}
+            onSelectPlace={handleSelectPlace}
             scrollRef={mainRef}
+          />
+        )}
+        {step === 4 && selectedPlace && selectedStation && (
+          <Step5PlaceDetail
+            place={selectedPlace}
+            station={selectedStation}
+            onBack={() => setStep(3)}
+            onRestart={handleRestart}
           />
         )}
       </main>

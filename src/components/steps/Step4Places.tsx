@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
+import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2 } from "lucide-react";
 import { displayName } from "@/data/stations";
 
@@ -11,6 +11,7 @@ interface Props {
   meetingType: MeetingType;
   onBack: () => void;
   onRestart: () => void;
+  onSelectPlace: (place: PlaceItem) => void;
   scrollRef?: React.RefObject<HTMLElement | null>;
 }
 
@@ -69,20 +70,10 @@ const foodFilters = [
 
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
 
-interface PlaceItem {
-  title: string;
-  category: string;
-  address: string;
-  roadAddress: string;
-  link: string;
-  telephone: string;
-  imageUrls: string[];
-}
-
 // 캐시 타입: 필터명 → { items, nextStart, hasMore }
 interface CacheEntry { items: PlaceItem[]; nextStart: number; hasMore: boolean; }
 
-export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, scrollRef }: Props) {
+export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef }: Props) {
   const [filter, setFilter] = useState("전체");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -274,7 +265,8 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           places.map((place, i) => (
             <div
               key={i}
-              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm transition-all"
+              onClick={() => onSelectPlace(place)}
+              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm active:scale-[0.99] transition-all cursor-pointer"
             >
               {/* 업체명 + 카테고리 + 아이콘 */}
               <div className="px-4 pt-3.5 pb-3 flex items-start gap-2">
