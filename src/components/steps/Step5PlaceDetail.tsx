@@ -196,13 +196,10 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
                 </button>
                 <a
                   href={
-                    // 좌표가 있으면 지도 위치 핀 URL (검색 결과 목록 아님)
-                    hours?.location
-                      ? `https://map.naver.com/v5/?c=${hours.location.lng},${hours.location.lat},16,0,0,0,dh`
-                      : place.link?.includes("naver")
+                    // Naver Place URL이 있으면 그대로 사용 (해당 업체 지도 페이지)
+                    // 없으면 업체명으로 Naver 지도 검색
+                    place.link?.includes("naver")
                       ? place.link
-                      : place.roadAddress
-                      ? `https://map.naver.com/v5/search/${encodeURIComponent(place.roadAddress)}`
                       : `https://map.naver.com/v5/search/${encodeURIComponent(place.title)}`
                   }
                   target="_blank"
