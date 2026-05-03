@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import {
   MapPin, Clock, ArrowLeft,
-  ChevronDown, ChevronUp, Loader2,
+  ChevronDown, ChevronUp, Loader2, X,
 } from "lucide-react";
 import type { PlaceItem, RecommendedStation } from "@/lib/types";
 import type { PlaceHoursResult } from "@/app/api/place-hours/route";
 import { findStation, displayName } from "@/data/stations";
 import { LineBadge } from "@/lib/lineColors";
+import KakaoMap from "@/components/KakaoMap";
 
 interface Props {
   place: PlaceItem;
@@ -68,6 +69,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const [hoursLoading, setHoursLoading] = useState(true);
   const [weekExpanded, setWeekExpanded] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   const stationData = findStation(station.name);
   const stationDisplayName = displayName(station.name);
@@ -93,6 +95,16 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     fetchHours();
     return () => { cancelled = true; };
   }, [place.title, station.name]);
+
+  // 지도 열릴 때 body 스크롤 방지
+  useEffect(() => {
+    if (mapOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mapOpen]);
 
   // 클립보드 복사
   async function handleCopyAddress() {
@@ -135,6 +147,10 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const categoryLabel = place.category?.split(">").pop()?.trim() ?? "";
   const displayAddress = shortenAddress(place.roadAddress || place.address || "");
 
+  // 지도에 넘길 좌표 (hours에서 받아온 값)
+  const mapLat = hours?.location?.lat ?? null;
+  const mapLng = hours?.location?.lng ?? null;
+
   return (
     <div className="space-y-3">
 
@@ -146,6 +162,49 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
           주소가 복사됐어요
         </div>
       </div>
+
+      {/* ── 카카오 지도 바텀시트 ── */}
+      {mapOpen && (
+        <div className="fixed inset-0 z-[300] flex flex-col justify-end">
+          {/* 어두운 배경 - 클릭 시 닫기 */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMapOpen(false)}
+          />
+
+          {/* 시트 본체 */}
+          <div className="relative bg-white rounded-t-3xl overflow-hidden"
+               style={{ height: "70vh" }}>
+
+            {/* 시트 헤더 */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
+              <div className="min-w-0">
+                <p className="font-bold text-[15px] truncate">{place.title}</p>
+                {displayAddress && (
+                  <p className="text-xs text-text-muted mt-0.5 truncate">{displayAddress}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setMapOpen(false)}
+                className="ml-3 shrink-0 w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface transition-colors"
+                aria-label="지도 닫기"
+              >
+                <X className="w-4 h-4 text-foreground" />
+              </button>
+            </div>
+
+            {/* 지도 영역 */}
+            <div className="w-full" style={{ height: "calc(70vh - 65px)" }}>
+              <KakaoMap
+                name={place.title}
+                address={place.roadAddress || place.address}
+                lat={mapLat}
+                lng={mapLng}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 상단 영역: 사진 + 업체명/카테고리 ── */}
       <div className="bg-surface border border-border rounded-2xl overflow-hidden">
@@ -194,20 +253,12 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
                 >
                   복사
                 </button>
-                <a
-                  href={
-                    // Naver Place URL이 있으면 그대로 사용 (해당 업체 지도 페이지)
-                    // 없으면 업체명으로 Naver 지도 검색
-                    place.link?.includes("naver")
-                      ? place.link
-                      : `https://map.naver.com/v5/search/${encodeURIComponent(place.title)}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => setMapOpen(true)}
                   className="text-xs text-[#0068C3] hover:opacity-70 transition-opacity"
                 >
                   지도
-                </a>
+                </button>
               </div>
             </div>
 
