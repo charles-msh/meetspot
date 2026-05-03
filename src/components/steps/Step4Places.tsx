@@ -205,6 +205,16 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
   return (
     <div className="space-y-4">
+      {/* 약속 컨텍스트 (venue + meeting type) */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 text-sm text-foreground">
+          {venue.icon}
+          <span className="font-semibold">{venue.label}</span>
+        </div>
+        <span className="text-text-muted text-sm">·</span>
+        <span className="text-sm text-text-muted">{meetingLabel}에 딱 맞는 추천</span>
+      </div>
+
       {/* 음식 필터 (식당일 때만) */}
       {/* 5번: 오른쪽 페이드 아웃으로 스크롤 가능 암시 */}
       {showFoodFilter && (

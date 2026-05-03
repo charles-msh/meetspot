@@ -243,8 +243,8 @@ export async function GET(request: NextRequest) {
       combined.map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
 
-        // Redis 캐시 확인 (TTL 7일 / v2: prefix로 이전 캐시 자동 무효화)
-        const cacheKey = `v2:img:${stationName}:${name}`;
+        // Redis 캐시 확인 (TTL 7일 / v3: 원본 URL 저장으로 캐시 무효화)
+        const cacheKey = `v3:img:${stationName}:${name}`;
         const cached = await redis.get<string[]>(cacheKey).catch(() => null);
         if (cached) {
           return {
@@ -269,15 +269,30 @@ export async function GET(request: NextRequest) {
 
         if (imgRes?.ok) {
           const d = await imgRes.json();
+
+          // Vision API용 w600 CDN URL (서버→서버 fetch가 안정적)
           const naverUrls: string[] = (d.items || [])
             .map((img: Record<string, string>) => {
               const thumb = img.thumbnail || "";
-              // b150(150x150 크롭) → w600(600px 원본 비율) 으로 업스케일
               return thumb.replace(/type=b\d+/g, "type=w600").replace(/type=a\d+/g, "type=w600");
             })
             .filter(Boolean);
 
-          imageUrls = await filterFoodImages(naverUrls);
+          // Vision 필터링은 w600 CDN URL로 처리
+          const filtered = await filterFoodImages(naverUrls);
+
+          // 저장/표시용은 원본 URL 추출 (CDN URL의 src 파라미터)
+          // 네이버 CDN: https://search.pstatic.net/common/?src=원본URL&type=w600
+          imageUrls = filtered.map((cdnUrl) => {
+            try {
+              const u = new URL(cdnUrl);
+              if (u.hostname === "search.pstatic.net") {
+                const src = u.searchParams.get("src");
+                if (src) return src; // 원본 URL 반환
+              }
+            } catch { /* URL 파싱 실패 시 CDN URL 그대로 사용 */ }
+            return cdnUrl;
+          });
         }
 
         // Redis에 7일 캐시 저장 (30일은 오래된 잘못된 이미지가 계속 노출되는 문제 있었음)

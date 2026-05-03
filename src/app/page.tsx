@@ -171,13 +171,13 @@ export default function Home() {
 
       {/* ── 메인 ── */}
       <main ref={mainRef} className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 pt-4 pb-6">
-        <h2 className="text-[22px] font-bold tracking-tight mb-4">
-          {step === 0 && "어떤 약속인가요?"}
-          {step === 1 && "어디서 출발하나요?"}
-          {step === 2 && "여기서 만나요!"}
-          {step === 3 && `${selectedStation ? displayName(selectedStation.name) : ""}역 근처`}
-          {step === 4 && (selectedPlace?.title ?? "")}
-        </h2>
+        {step < 3 && (
+          <h2 className="text-[22px] font-bold tracking-tight mb-4">
+            {step === 0 && "어떤 약속인가요?"}
+            {step === 1 && "어디서 출발하나요?"}
+            {step === 2 && "여기서 만나요!"}
+          </h2>
+        )}
 
         {step === 0 && (
           <Step1MeetingType
