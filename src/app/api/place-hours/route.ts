@@ -181,8 +181,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // v5: 복수 영업시간 + 출구 검색 개선으로 캐시 무효화
-  const cacheKey = `hoursv5:${station}:${name}`;
+  // v6: 영업시간 표기법 개선 (todayHours 합산, weeklyHours 점심/저녁 라벨)
+  const cacheKey = `hoursv6:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
@@ -238,27 +238,44 @@ export async function GET(request: NextRequest) {
     const openNow: boolean | null = hours.openNow ?? null;
     const periods: Period[] = hours.periods ?? [];
 
-    // 하루에 여러 타임(점심+저녁 등)이 있을 수 있으므로 filter로 전부 수집
     const todayDay = new Date().getDay();
-    const todayPeriods = periods.filter((p) => p.open?.day === todayDay);
     const fmtPeriod = (p: Period) =>
       `${fmt(p.open.hour, p.open.minute)} ~ ${p.close ? fmt(p.close.hour, p.close.minute) : "24:00"}`;
 
-    const todayHours = todayPeriods.length > 0
-      ? todayPeriods.map(fmtPeriod).join(", ")
-      : null;
+    // 타임대 라벨 (시작 시간 기준: ~15시 이전 = 점심, 이후 = 저녁)
+    function periodLabel(p: Period, idx: number, total: number): string {
+      if (total === 1) return "";
+      if (p.open.hour < 15) return "점심 ";
+      return "저녁 ";
+    }
 
-    // 요일별 영업시간 (복수 타임 지원)
-    const weekMap: Record<number, string[]> = {};
+    // 요일별 periods 수집
+    const weekMap: Record<number, Period[]> = {};
     for (const p of periods) {
       const d = p.open?.day;
       if (d === undefined) continue;
       if (!weekMap[d]) weekMap[d] = [];
-      weekMap[d].push(fmtPeriod(p));
+      weekMap[d].push(p);
     }
-    const weeklyHours = [0, 1, 2, 3, 4, 5, 6].map((d) =>
-      weekMap[d] ? `${DAY_LABELS[d]}  ${weekMap[d].join(", ")}` : `${DAY_LABELS[d]}  휴무`
-    );
+
+    // todayHours: 복수 타임이면 첫 open ~ 마지막 close 로 합쳐서 표시
+    const todayPeriods = weekMap[todayDay] ?? [];
+    const todayHours = (() => {
+      if (todayPeriods.length === 0) return null;
+      if (todayPeriods.length === 1) return fmtPeriod(todayPeriods[0]);
+      const firstOpen = fmt(todayPeriods[0].open.hour, todayPeriods[0].open.minute);
+      const last = todayPeriods[todayPeriods.length - 1];
+      const lastClose = last.close ? fmt(last.close.hour, last.close.minute) : "24:00";
+      return `${firstOpen} ~ ${lastClose}`;
+    })();
+
+    // weeklyHours: 복수 타임이면 "점심 11:00~14:30, 저녁 17:00~22:00" 형태
+    const weeklyHours = [0, 1, 2, 3, 4, 5, 6].map((d) => {
+      const ps = weekMap[d];
+      if (!ps || ps.length === 0) return `${DAY_LABELS[d]}  휴무`;
+      const times = ps.map((p, i) => `${periodLabel(p, i, ps.length)}${fmtPeriod(p)}`).join(", ");
+      return `${DAY_LABELS[d]}  ${times}`;
+    });
 
     const result: PlaceHoursResult = { openNow, todayHours, weeklyHours, location, nearestExit };
     await redis.set(cacheKey, result, { ex: 60 * 60 * 24 }).catch(() => null);
