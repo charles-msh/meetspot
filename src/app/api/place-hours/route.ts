@@ -4,6 +4,7 @@ import { findStation } from "@/data/stations";
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
+const TMAP_APP_KEY = process.env.TMAP_APP_KEY!;
 const redis = Redis.fromEnv();
 
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -51,13 +52,47 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** T map 보행자 경로 API로 출구→장소 실제 도보 시간(초) 조회 */
+async function tmapWalkSeconds(
+  startLng: number, startLat: number,
+  endLng: number,   endLat: number,
+): Promise<number | null> {
+  if (!TMAP_APP_KEY) return null;
+  try {
+    const res = await fetch(
+      "https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "appKey": TMAP_APP_KEY,
+        },
+        body: JSON.stringify({
+          startX: String(startLng),
+          startY: String(startLat),
+          endX:   String(endLng),
+          endY:   String(endLat),
+          startName: "출구",
+          endName:   "목적지",
+          reqCoordType: "WGS84GEO",
+          resCoordType: "WGS84GEO",
+        }),
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    // GeoJSON FeatureCollection — 첫 번째 Feature의 totalTime(초)
+    const totalTime = data?.features?.[0]?.properties?.totalTime;
+    return typeof totalTime === "number" ? totalTime : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 카카오 Local Search로 역 출구 조회 후 장소에서 가장 가까운 출구 반환
- *
- * 핵심 원리:
- * - 역 중심 좌표(stations.ts) 근처에서 "${역명}역 출구" 검색 → 번호 출구 POI 수집
- * - 각 출구↔장소 거리(haversine)를 계산해 최솟값 출구 선택
- * - 이렇게 해야 "N번 출구" POI가 실제로 반환됨 (장소 좌표 기준 검색은 결과 없음)
+ * ① 카카오: 역 중심 좌표 기준으로 모든 번호 출구 POI 수집
+ * ② T map: 각 출구 → 장소 실제 도보 시간 병렬 조회
+ * ③ 도보 시간이 가장 짧은 출구 반환
  */
 async function findNearestExit(
   placeLat: number,
@@ -66,12 +101,12 @@ async function findNearestExit(
 ): Promise<NearestExit | null> {
   if (!KAKAO_REST_API_KEY) return null;
   try {
-    // 1단계: stations.ts 에서 역 중심 좌표 가져오기
+    // 1단계: stations.ts에서 역 중심 좌표 조회
     const stData = findStation(stationName);
     const searchLat = stData?.lat ?? placeLat;
     const searchLng = stData?.lng ?? placeLng;
 
-    // 2단계: 역 중심 좌표 기준으로 출구 검색
+    // 2단계: 역 중심 좌표 기준 출구 POI 검색
     const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
     url.searchParams.set("query", `${stationName}역 출구`);
     url.searchParams.set("category_group_code", "SW8");
@@ -81,34 +116,52 @@ async function findNearestExit(
     url.searchParams.set("sort", "distance");
     url.searchParams.set("size", "15");
 
-    const res = await fetch(url.toString(), {
+    const kakaoRes = await fetch(url.toString(), {
       headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
     });
-    if (!res.ok) return null;
+    if (!kakaoRes.ok) return null;
 
-    const data = await res.json();
+    const kakaoData = await kakaoRes.json();
     const docs: { place_name: string; x: string; y: string }[] =
-      data.documents ?? [];
+      kakaoData.documents ?? [];
 
-    // 3단계: "N번 출구" 패턴 필터링
+    // 3단계: "N번 출구" 필터링
     const exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
     if (exits.length === 0) return null;
 
-    // 4단계: 각 출구↔장소 haversine 거리로 가장 가까운 출구 선택
-    let best = exits[0];
-    let bestDist = haversine(
-      placeLat, placeLng,
-      parseFloat(exits[0].y), parseFloat(exits[0].x)
+    // 4단계: 모든 출구에 대해 T map 도보 시간 병렬 조회
+    const times = await Promise.all(
+      exits.map((exit) =>
+        tmapWalkSeconds(
+          parseFloat(exit.x), parseFloat(exit.y),
+          placeLng, placeLat,
+        )
+      )
     );
-    for (const exit of exits.slice(1)) {
-      const d = haversine(placeLat, placeLng, parseFloat(exit.y), parseFloat(exit.x));
-      if (d < bestDist) { best = exit; bestDist = d; }
+
+    // 5단계: 도보 시간 기준으로 최솟값 출구 선택
+    //  T map 실패 시 haversine fallback
+    let bestIdx = 0;
+    let bestSecs = times[0] ?? Infinity;
+    for (let i = 1; i < exits.length; i++) {
+      const secs = times[i] ?? Infinity;
+      if (secs < bestSecs) { bestIdx = i; bestSecs = secs; }
     }
+
+    const best = exits[bestIdx];
+    const distM = Math.round(
+      haversine(placeLat, placeLng, parseFloat(best.y), parseFloat(best.x))
+    );
+
+    // T map 시간이 있으면 사용, 없으면 haversine 추정
+    const walkMinsVal = bestSecs < Infinity
+      ? Math.ceil(bestSecs / 60)
+      : calcWalkMins(distM);
 
     return {
       name: best.place_name,
-      distanceM: Math.round(bestDist),
-      walkMins: calcWalkMins(bestDist),
+      distanceM: distM,
+      walkMins: walkMinsVal,
     };
   } catch {
     return null;
@@ -124,8 +177,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // v3: 캐시 키 버전 업 (nearestExit 검색 로직 개선으로 기존 캐시 무효화)
-  const cacheKey = `hoursv3:${station}:${name}`;
+  // v4: T map 도보 시간 도입으로 캐시 무효화
+  const cacheKey = `hoursv4:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
