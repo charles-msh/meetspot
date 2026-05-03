@@ -106,27 +106,31 @@ async function findNearestExit(
     const searchLat = stData?.lat ?? placeLat;
     const searchLng = stData?.lng ?? placeLng;
 
-    // 2단계: 역 중심 좌표 기준 출구 POI 검색
-    const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
-    url.searchParams.set("query", `${stationName}역 출구`);
-    url.searchParams.set("category_group_code", "SW8");
-    url.searchParams.set("x", String(searchLng));
-    url.searchParams.set("y", String(searchLat));
-    url.searchParams.set("radius", "600");
-    url.searchParams.set("sort", "distance");
-    url.searchParams.set("size", "15");
+    // 2단계: 카카오 키워드 검색으로 출구 POI 조회 (두 번 시도)
+    async function fetchExits(useCategory: boolean) {
+      const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+      url.searchParams.set("query", `${stationName}역 출구`);
+      if (useCategory) url.searchParams.set("category_group_code", "SW8");
+      url.searchParams.set("x", String(searchLng));
+      url.searchParams.set("y", String(searchLat));
+      url.searchParams.set("radius", "1000");
+      url.searchParams.set("sort", "distance");
+      url.searchParams.set("size", "15");
+      const r = await fetch(url.toString(), {
+        headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
+      });
+      if (!r.ok) return [];
+      const d = await r.json();
+      return (d.documents ?? []) as { place_name: string; x: string; y: string }[];
+    }
 
-    const kakaoRes = await fetch(url.toString(), {
-      headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
-    });
-    if (!kakaoRes.ok) return null;
-
-    const kakaoData = await kakaoRes.json();
-    const docs: { place_name: string; x: string; y: string }[] =
-      kakaoData.documents ?? [];
-
-    // 3단계: "N번 출구" 필터링
-    const exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
+    // SW8 카테고리로 먼저 시도 → 출구 없으면 카테고리 없이 재시도
+    let docs = await fetchExits(true);
+    let exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
+    if (exits.length === 0) {
+      docs = await fetchExits(false);
+      exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
+    }
     if (exits.length === 0) return null;
 
     // 4단계: 모든 출구에 대해 T map 도보 시간 병렬 조회
@@ -177,8 +181,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // v4: T map 도보 시간 도입으로 캐시 무효화
-  const cacheKey = `hoursv4:${station}:${name}`;
+  // v5: 복수 영업시간 + 출구 검색 개선으로 캐시 무효화
+  const cacheKey = `hoursv5:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
@@ -234,28 +238,26 @@ export async function GET(request: NextRequest) {
     const openNow: boolean | null = hours.openNow ?? null;
     const periods: Period[] = hours.periods ?? [];
 
-    // 오늘 영업시간
+    // 하루에 여러 타임(점심+저녁 등)이 있을 수 있으므로 filter로 전부 수집
     const todayDay = new Date().getDay();
-    const todayPeriod = periods.find((p) => p.open?.day === todayDay);
-    const todayHours = todayPeriod
-      ? `${fmt(todayPeriod.open.hour, todayPeriod.open.minute)} ~ ${
-          todayPeriod.close
-            ? fmt(todayPeriod.close.hour, todayPeriod.close.minute)
-            : "24:00"
-        }`
+    const todayPeriods = periods.filter((p) => p.open?.day === todayDay);
+    const fmtPeriod = (p: Period) =>
+      `${fmt(p.open.hour, p.open.minute)} ~ ${p.close ? fmt(p.close.hour, p.close.minute) : "24:00"}`;
+
+    const todayHours = todayPeriods.length > 0
+      ? todayPeriods.map(fmtPeriod).join(", ")
       : null;
 
-    // 요일별 영업시간
-    const weekMap: Record<number, string> = {};
+    // 요일별 영업시간 (복수 타임 지원)
+    const weekMap: Record<number, string[]> = {};
     for (const p of periods) {
       const d = p.open?.day;
       if (d === undefined) continue;
-      const open = fmt(p.open.hour, p.open.minute);
-      const close = p.close ? fmt(p.close.hour, p.close.minute) : "24:00";
-      weekMap[d] = `${open} ~ ${close}`;
+      if (!weekMap[d]) weekMap[d] = [];
+      weekMap[d].push(fmtPeriod(p));
     }
     const weeklyHours = [0, 1, 2, 3, 4, 5, 6].map((d) =>
-      weekMap[d] ? `${DAY_LABELS[d]}  ${weekMap[d]}` : `${DAY_LABELS[d]}  휴무`
+      weekMap[d] ? `${DAY_LABELS[d]}  ${weekMap[d].join(", ")}` : `${DAY_LABELS[d]}  휴무`
     );
 
     const result: PlaceHoursResult = { openNow, todayHours, weeklyHours, location, nearestExit };
