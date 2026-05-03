@@ -117,11 +117,16 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     } catch { /* 구형 브라우저 무시 */ }
   }
 
-  // 도보 시간 계산: Google Places 좌표 우선, 없으면 선택역 기준
+  // 도보 시간: 카카오 출구 정보 우선 → Google Places+역 좌표 fallback
   const walkingInfo = (() => {
+    // ① 카카오 출구 정보가 있으면 가장 정확한 정보 사용
+    if (hours?.nearestExit) {
+      const { name, walkMins: mins } = hours.nearestExit;
+      return `${name}에서 도보 ${mins}분`;
+    }
+    // ② 좌표는 있지만 출구 정보 없음 → 역 중심 좌표로 거리 계산
     const placeLat = hours?.location?.lat;
     const placeLng = hours?.location?.lng;
-    // displayName이 이미 '역'으로 끝나는 경우 중복 방지 (예: 서울역 → '서울역에서', 강남 → '강남역에서')
     const nameBase = stationDisplayName.endsWith("역")
       ? stationDisplayName.slice(0, -1)
       : stationDisplayName;
@@ -130,6 +135,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
       const mins = walkMins(dist);
       return `${nameBase}역에서 도보 ${mins}분`;
     }
+    // ③ 좌표 없음 → 역 근처 텍스트만
     if (stationData) {
       return `${nameBase}역 근처`;
     }

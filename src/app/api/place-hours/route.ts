@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
+const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
 const redis = Redis.fromEnv();
 
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -15,11 +16,64 @@ interface Period {
   close?: { day: number; hour: number; minute: number };
 }
 
+export interface NearestExit {
+  /** 카카오 place_name 그대로: "이촌역 4번 출구" */
+  name: string;
+  /** 장소로부터의 직선거리(m) */
+  distanceM: number;
+  /** 도보 분 (haversine × 보정) */
+  walkMins: number;
+}
+
 export interface PlaceHoursResult {
   openNow: boolean | null;
   todayHours: string | null;      // "11:00 ~ 22:00"
   weeklyHours: string[] | null;   // ["일  11:00 ~ 22:00", "월  휴무", ...]
   location: { lat: number; lng: number } | null;
+  nearestExit: NearestExit | null;
+}
+
+// 도보 분 (4 km/h + 1.3× 경로 보정)
+function calcWalkMins(meters: number) {
+  return Math.ceil((meters / 66.7) * 1.3);
+}
+
+/** 카카오 Local Search로 좌표 근처 지하철 출구 조회 */
+async function findNearestExit(lat: number, lng: number): Promise<NearestExit | null> {
+  if (!KAKAO_REST_API_KEY) return null;
+  try {
+    // SW8 = 지하철역 카테고리. 반경 700m 내 출구를 거리순으로 최대 10개 조회
+    const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+    url.searchParams.set("query", "출구");
+    url.searchParams.set("category_group_code", "SW8");
+    url.searchParams.set("x", String(lng));
+    url.searchParams.set("y", String(lat));
+    url.searchParams.set("radius", "700");
+    url.searchParams.set("sort", "distance");
+    url.searchParams.set("size", "10");
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const docs: { place_name: string; distance: string }[] =
+      data.documents ?? [];
+
+    // "X번 출구" 패턴을 포함하는 첫 번째 결과 사용
+    const exit = docs.find((d) => /\d+번\s*출구/.test(d.place_name));
+    if (!exit) return null;
+
+    const distanceM = parseInt(exit.distance, 10);
+    return {
+      name: exit.place_name,           // "이촌역 4번 출구"
+      distanceM,
+      walkMins: calcWalkMins(distanceM),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -31,12 +85,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // Redis 캐시 (24시간)
-  const cacheKey = `hours:${station}:${name}`;
+  // v2: 캐시 키 버전 업 (nearestExit 필드 추가로 기존 캐시 무효화)
+  const cacheKey = `hoursv2:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
-  const empty: PlaceHoursResult = { openNow: null, todayHours: null, weeklyHours: null, location: null };
+  const empty: PlaceHoursResult = {
+    openNow: null, todayHours: null, weeklyHours: null,
+    location: null, nearestExit: null,
+  };
 
   try {
     const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -54,7 +111,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!res.ok) {
-      await redis.set(cacheKey, empty, { ex: 60 * 60 * 6 }).catch(() => null); // 오류 시 6시간 캐시
+      await redis.set(cacheKey, empty, { ex: 60 * 60 * 6 }).catch(() => null);
       return NextResponse.json(empty);
     }
 
@@ -70,10 +127,14 @@ export async function GET(request: NextRequest) {
       ? { lat: place.location.latitude, lng: place.location.longitude }
       : null;
 
-    const hours = place.currentOpeningHours ?? place.regularOpeningHours ?? null;
+    // 좌표 있으면 카카오로 가장 가까운 출구 조회 (병렬)
+    const [hours, nearestExit] = await Promise.all([
+      Promise.resolve(place.currentOpeningHours ?? place.regularOpeningHours ?? null),
+      location ? findNearestExit(location.lat, location.lng) : Promise.resolve(null),
+    ]);
 
     if (!hours) {
-      const result: PlaceHoursResult = { ...empty, location };
+      const result: PlaceHoursResult = { ...empty, location, nearestExit };
       await redis.set(cacheKey, result, { ex: 60 * 60 * 24 }).catch(() => null);
       return NextResponse.json(result);
     }
@@ -82,7 +143,7 @@ export async function GET(request: NextRequest) {
     const periods: Period[] = hours.periods ?? [];
 
     // 오늘 영업시간
-    const todayDay = new Date().getDay(); // 0=일
+    const todayDay = new Date().getDay();
     const todayPeriod = periods.find((p) => p.open?.day === todayDay);
     const todayHours = todayPeriod
       ? `${fmt(todayPeriod.open.hour, todayPeriod.open.minute)} ~ ${
@@ -92,7 +153,7 @@ export async function GET(request: NextRequest) {
         }`
       : null;
 
-    // 요일별 영업시간 맵 (day 0=일 ~ 6=토)
+    // 요일별 영업시간
     const weekMap: Record<number, string> = {};
     for (const p of periods) {
       const d = p.open?.day;
@@ -105,7 +166,7 @@ export async function GET(request: NextRequest) {
       weekMap[d] ? `${DAY_LABELS[d]}  ${weekMap[d]}` : `${DAY_LABELS[d]}  휴무`
     );
 
-    const result: PlaceHoursResult = { openNow, todayHours, weeklyHours, location };
+    const result: PlaceHoursResult = { openNow, todayHours, weeklyHours, location, nearestExit };
     await redis.set(cacheKey, result, { ex: 60 * 60 * 24 }).catch(() => null);
     return NextResponse.json(result);
   } catch {
