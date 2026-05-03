@@ -243,8 +243,8 @@ export async function GET(request: NextRequest) {
       combined.map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
 
-        // Redis 캐시 확인 (TTL 30일)
-        const cacheKey = `img:${stationName}:${name}`;
+        // Redis 캐시 확인 (TTL 7일 / v2: prefix로 이전 캐시 자동 무효화)
+        const cacheKey = `v2:img:${stationName}:${name}`;
         const cached = await redis.get<string[]>(cacheKey).catch(() => null);
         if (cached) {
           return {
@@ -280,9 +280,9 @@ export async function GET(request: NextRequest) {
           imageUrls = await filterFoodImages(naverUrls);
         }
 
-        // Redis에 30일 캐시 저장
+        // Redis에 7일 캐시 저장 (30일은 오래된 잘못된 이미지가 계속 노출되는 문제 있었음)
         if (imageUrls.length > 0) {
-          await redis.set(cacheKey, imageUrls, { ex: 60 * 60 * 24 * 30 }).catch(() => null);
+          await redis.set(cacheKey, imageUrls, { ex: 60 * 60 * 24 * 7 }).catch(() => null);
         }
 
         return {

@@ -181,26 +181,13 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
         <div className="flex items-start gap-3 px-4 py-3.5">
           <MapPin className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0 space-y-1.5">
-            {/* 주소 */}
-            <p className="text-sm text-foreground leading-snug">
-              {displayAddress || "주소 정보 없음"}
-            </p>
-            {/* 도보시간 + 복사/지도 링크 */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* 노선 배지 */}
-              {station.line.map((l) => (
-                <LineBadge key={l} line={l} />
-              ))}
-              {/* 도보 텍스트 */}
-              {hoursLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin text-text-muted" />
-              ) : walkingInfo ? (
-                <span className="text-xs text-text-muted">{walkingInfo}</span>
-              ) : (
-                <span className="text-xs text-text-muted">{stationDisplayName}역 근처</span>
-              )}
-              {/* 복사 · 지도 링크 */}
-              <div className="ml-auto flex items-center gap-2.5 shrink-0">
+
+            {/* 첫째 줄: 주소 + 복사 · 지도 */}
+            <div className="flex items-start gap-2">
+              <p className="flex-1 text-sm text-foreground leading-snug">
+                {displayAddress || "주소 정보 없음"}
+              </p>
+              <div className="shrink-0 flex items-center gap-2.5 pt-0.5">
                 <button
                   onClick={handleCopyAddress}
                   className="text-xs text-[#0068C3] hover:opacity-70 transition-opacity"
@@ -209,9 +196,14 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
                 </button>
                 <a
                   href={
-                    place.link && place.link.includes("naver")
+                    // 좌표가 있으면 지도 위치 핀 URL (검색 결과 목록 아님)
+                    hours?.location
+                      ? `https://map.naver.com/v5/?c=${hours.location.lng},${hours.location.lat},16,0,0,0,dh`
+                      : place.link?.includes("naver")
                       ? place.link
-                      : `https://map.naver.com/v5/search/${encodeURIComponent(place.title + " " + stationDisplayName + "역")}`
+                      : place.roadAddress
+                      ? `https://map.naver.com/v5/search/${encodeURIComponent(place.roadAddress)}`
+                      : `https://map.naver.com/v5/search/${encodeURIComponent(place.title)}`
                   }
                   target="_blank"
                   rel="noopener noreferrer"
@@ -221,6 +213,21 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
                 </a>
               </div>
             </div>
+
+            {/* 둘째 줄: 노선 배지 + 도보시간 */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {station.line.map((l) => (
+                <LineBadge key={l} line={l} />
+              ))}
+              {hoursLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin text-text-muted" />
+              ) : walkingInfo ? (
+                <span className="text-xs text-text-muted">{walkingInfo}</span>
+              ) : (
+                <span className="text-xs text-text-muted">{stationDisplayName}역 근처</span>
+              )}
+            </div>
+
           </div>
         </div>
 
