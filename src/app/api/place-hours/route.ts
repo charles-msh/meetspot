@@ -39,12 +39,17 @@ function calcWalkMins(meters: number) {
 }
 
 /** 카카오 Local Search로 좌표 근처 지하철 출구 조회 */
-async function findNearestExit(lat: number, lng: number): Promise<NearestExit | null> {
+async function findNearestExit(
+  lat: number,
+  lng: number,
+  stationName: string   // "이촌" → "이촌역"으로 검색
+): Promise<NearestExit | null> {
   if (!KAKAO_REST_API_KEY) return null;
   try {
-    // SW8 = 지하철역 카테고리. 반경 700m 내 출구를 거리순으로 최대 10개 조회
+    // SW8 = 지하철역 카테고리. 역 이름으로 검색해야 출구 POI가 조회됨
+    // "출구" 키워드로는 결과 없음 — "이촌역" 처럼 역명 사용
     const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
-    url.searchParams.set("query", "출구");
+    url.searchParams.set("query", `${stationName}역`);
     url.searchParams.set("category_group_code", "SW8");
     url.searchParams.set("x", String(lng));
     url.searchParams.set("y", String(lat));
@@ -130,7 +135,7 @@ export async function GET(request: NextRequest) {
     // 좌표 있으면 카카오로 가장 가까운 출구 조회 (병렬)
     const [hours, nearestExit] = await Promise.all([
       Promise.resolve(place.currentOpeningHours ?? place.regularOpeningHours ?? null),
-      location ? findNearestExit(location.lat, location.lng) : Promise.resolve(null),
+      location ? findNearestExit(location.lat, location.lng, station) : Promise.resolve(null),
     ]);
 
     if (!hours) {
