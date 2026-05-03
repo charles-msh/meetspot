@@ -16,7 +16,7 @@ declare global {
   }
 }
 
-const KAKAO_SDK_SRC = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services`;
+const KAKAO_SDK_SRC = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services`;
 
 export default function KakaoMap({ name, address, lat, lng }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -62,33 +62,44 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
   useEffect(() => {
     // 이미 SDK 로드돼 있으면 (바텀시트 재오픈 등) 바로 초기화
     if (window.kakao?.maps) {
-      setSdkReady(true);
-      initMap();
+      window.kakao.maps.load(() => { setSdkReady(true); initMap(); });
       return;
     }
 
-    // 이미 같은 스크립트 태그가 DOM에 있으면 (로딩 중) load 이벤트만 대기
+    // 이미 같은 스크립트 태그가 DOM에 있는 경우
     const existing = document.querySelector(
       `script[src*="dapi.kakao.com/v2/maps"]`
     ) as HTMLScriptElement | null;
 
     if (existing) {
-      const onLoad = () => { setSdkReady(true); initMap(); };
-      const onError = () => setLoadError(true);
-      existing.addEventListener("load", onLoad);
-      existing.addEventListener("error", onError);
-      return () => {
-        existing.removeEventListener("load", onLoad);
-        existing.removeEventListener("error", onError);
-      };
+      // 이전에 실패한 스크립트 태그면 제거하고 재시도
+      if (existing.dataset.status === "failed") {
+        existing.remove();
+      } else {
+        // 로딩 중인 스크립트 - load/error 이벤트 대기
+        const onLoad = () => { window.kakao.maps.load(() => { setSdkReady(true); initMap(); }); };
+        const onError = () => setLoadError(true);
+        existing.addEventListener("load", onLoad);
+        existing.addEventListener("error", onError);
+        return () => {
+          existing.removeEventListener("load", onLoad);
+          existing.removeEventListener("error", onError);
+        };
+      }
     }
 
-    // 스크립트 없으면 새로 주입
+    // 스크립트 주입
     const script = document.createElement("script");
     script.src = KAKAO_SDK_SRC;
     script.async = true;
-    script.onload = () => { setSdkReady(true); initMap(); };
-    script.onerror = () => setLoadError(true);
+    script.dataset.status = "loading";
+    script.onload = () => {
+      script.dataset.status = "loaded";
+      // sdk.js 로드 후에도 지도 클래스가 비동기로 추가 로드됨
+      // kakao.maps.load()로 완전 초기화 완료 후 initMap 실행
+      window.kakao.maps.load(() => { setSdkReady(true); initMap(); });
+    };
+    script.onerror = () => { script.dataset.status = "failed"; setLoadError(true); };
     document.head.appendChild(script);
 
     return () => {
