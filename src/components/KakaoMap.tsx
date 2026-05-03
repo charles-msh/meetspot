@@ -58,7 +58,13 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
 
   useEffect(() => {
     if (sdkReady) {
+      // sdkReady state가 true로 세팅된 직후
       window.kakao.maps.load(initMap);
+    } else if (typeof window !== "undefined" && window.kakao?.maps) {
+      // 컴포넌트가 재마운트됐을 때 SDK는 이미 로드돼 있는 경우
+      // (바텀시트 닫았다 다시 열면 Script onLoad가 재실행 안 됨)
+      window.kakao.maps.load(initMap);
+      setSdkReady(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdkReady, lat, lng, name]);
