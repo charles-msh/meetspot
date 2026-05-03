@@ -203,7 +203,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
               <div className="ml-auto flex items-center gap-2.5 shrink-0">
                 <button
                   onClick={handleCopyAddress}
-                  className="text-xs text-text-muted hover:text-foreground transition-colors"
+                  className="text-xs text-[#0068C3] hover:opacity-70 transition-opacity"
                 >
                   복사
                 </button>
@@ -215,7 +215,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-text-muted hover:text-foreground transition-colors"
+                  className="text-xs text-[#0068C3] hover:opacity-70 transition-opacity"
                 >
                   지도
                 </a>
