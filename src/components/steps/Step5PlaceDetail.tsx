@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   MapPin, Navigation, Clock, ArrowLeft, ExternalLink,
-  ChevronDown, ChevronUp, Loader2,
+  ChevronDown, ChevronUp, Loader2, Copy,
 } from "lucide-react";
 import type { PlaceItem, RecommendedStation } from "@/lib/types";
 import type { PlaceHoursResult } from "@/app/api/place-hours/route";
@@ -20,6 +20,30 @@ const DAY_KOR = ["일", "월", "화", "수", "목", "금", "토"];
 
 const defaultImage =
   "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&h=400&fit=crop";
+
+/** 행정구역명 줄임 표현 */
+function shortenAddress(addr: string): string {
+  return addr
+    .replace("서울특별시", "서울")
+    .replace("부산광역시", "부산")
+    .replace("인천광역시", "인천")
+    .replace("대구광역시", "대구")
+    .replace("광주광역시", "광주")
+    .replace("대전광역시", "대전")
+    .replace("울산광역시", "울산")
+    .replace("세종특별자치시", "세종")
+    .replace("경기도", "경기")
+    .replace("강원특별자치도", "강원")
+    .replace("강원도", "강원")
+    .replace("충청북도", "충북")
+    .replace("충청남도", "충남")
+    .replace("전북특별자치도", "전북")
+    .replace("전라북도", "전북")
+    .replace("전라남도", "전남")
+    .replace("경상북도", "경북")
+    .replace("경상남도", "경남")
+    .replace("제주특별자치도", "제주");
+}
 
 /** Haversine 직선 거리 (미터) */
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -42,6 +66,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const [hours, setHours] = useState<PlaceHoursResult | null>(null);
   const [hoursLoading, setHoursLoading] = useState(true);
   const [weekExpanded, setWeekExpanded] = useState(false);
+  const [copyToast, setCopyToast] = useState(false);
 
   const stationData = findStation(station.name);
   const stationDisplayName = displayName(station.name);
@@ -68,6 +93,17 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     return () => { cancelled = true; };
   }, [place.title, station.name]);
 
+  // 클립보드 복사
+  async function handleCopyAddress() {
+    const addr = place.roadAddress || place.address || "";
+    if (!addr) return;
+    try {
+      await navigator.clipboard.writeText(addr);
+      setCopyToast(true);
+      setTimeout(() => setCopyToast(false), 2000);
+    } catch { /* 구형 브라우저 무시 */ }
+  }
+
   // 도보 시간 계산: Google Places 좌표 우선, 없으면 선택역 기준
   const walkingInfo = (() => {
     const placeLat = hours?.location?.lat;
@@ -75,7 +111,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     if (placeLat && placeLng && stationData) {
       const dist = haversine(stationData.lat, stationData.lng, placeLat, placeLng);
       const mins = walkMins(dist);
-      return `${stationDisplayName}역에서 도보 약 ${mins}분`;
+      return `${stationDisplayName}역에서 도보 ${mins}분`;
     }
     if (stationData) {
       return `${stationDisplayName}역 근처`;
@@ -96,10 +132,19 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
 
   const photos = place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage];
   const categoryLabel = place.category?.split(">").pop()?.trim() ?? "";
-  const displayAddress = place.roadAddress || place.address || "";
+  const displayAddress = shortenAddress(place.roadAddress || place.address || "");
 
   return (
     <div className="space-y-3">
+
+      {/* ── 주소 복사 토스트 ── */}
+      <div className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+        copyToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+      }`}>
+        <div className="bg-[#111] text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow-lg whitespace-nowrap">
+          주소가 복사됐어요
+        </div>
+      </div>
 
       {/* ── 상단 영역: 사진 + 업체명/카테고리 ── */}
       <div className="bg-surface border border-border rounded-2xl overflow-hidden">
@@ -135,7 +180,14 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
         {displayAddress && (
           <div className="flex items-start gap-3 px-4 py-3.5">
             <MapPin className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
-            <p className="text-sm text-foreground leading-snug">{displayAddress}</p>
+            <p className="flex-1 text-sm text-foreground leading-snug">{displayAddress}</p>
+            <button
+              onClick={handleCopyAddress}
+              className="shrink-0 flex items-center gap-1 text-xs text-text-muted hover:text-foreground transition-colors mt-0.5"
+            >
+              <Copy className="w-3 h-3" />
+              복사
+            </button>
           </div>
         )}
 
