@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   MapPin, Clock, ArrowLeft,
-  ChevronDown, ChevronUp, Loader2, X,
+  ChevronDown, ChevronUp, Loader2, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { PlaceItem, RecommendedStation } from "@/lib/types";
 import type { PlaceHoursResult } from "@/app/api/place-hours/route";
@@ -70,6 +70,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const [weekExpanded, setWeekExpanded] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const stationData = findStation(station.name);
   const stationDisplayName = displayName(station.name);
@@ -96,15 +97,15 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     return () => { cancelled = true; };
   }, [place.title, station.name]);
 
-  // 지도 열릴 때 body 스크롤 방지
+  // 지도 또는 라이트박스 열릴 때 body 스크롤 방지
   useEffect(() => {
-    if (mapOpen) {
+    if (mapOpen || lightboxIndex !== null) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; };
-  }, [mapOpen]);
+  }, [mapOpen, lightboxIndex]);
 
   // 클립보드 복사
   async function handleCopyAddress() {
@@ -216,22 +217,83 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
         </div>
       )}
 
-      {/* ── 상단 영역: 사진 + 업체명/카테고리 ── */}
+      {/* ── 이미지 라이트박스 ── */}
+      {lightboxIndex !== null && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/90"
+             onClick={() => setLightboxIndex(null)}>
+          {/* 닫기 버튼 */}
+          <button
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            onClick={() => setLightboxIndex(null)}
+            aria-label="닫기"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+
+          {/* 이전 버튼 */}
+          {photos.length > 1 && (
+            <button
+              className="absolute left-3 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex - 1 + photos.length) % photos.length); }}
+              aria-label="이전"
+            >
+              <ChevronLeft className="w-5 h-5 text-white" />
+            </button>
+          )}
+
+          {/* 이미지 */}
+          <img
+            src={photos[lightboxIndex]}
+            alt={`${place.title} ${lightboxIndex + 1}`}
+            className="max-w-full max-h-full object-contain px-14"
+            onClick={(e) => e.stopPropagation()}
+            onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+          />
+
+          {/* 다음 버튼 */}
+          {photos.length > 1 && (
+            <button
+              className="absolute right-3 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + 1) % photos.length); }}
+              aria-label="다음"
+            >
+              <ChevronRight className="w-5 h-5 text-white" />
+            </button>
+          )}
+
+          {/* 인디케이터 */}
+          {photos.length > 1 && (
+            <div className="absolute bottom-5 flex gap-1.5">
+              {photos.map((_, i) => (
+                <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === lightboxIndex ? "bg-white" : "bg-white/30"}`} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 상단 영역: 사진 스트립 ── */}
       <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-        {/* 사진 스트립 */}
         <div className="flex gap-1 overflow-x-auto scrollbar-hide">
           {photos.map((url, i) => (
-            <div key={i} className="shrink-0 w-[160px] h-[160px] overflow-hidden bg-gray-100">
+            <div
+              key={i}
+              className="shrink-0 w-[160px] h-[160px] overflow-hidden bg-gray-100 cursor-pointer"
+              onClick={() => setLightboxIndex(i)}
+            >
               <img
                 src={url}
                 alt={`${place.title} ${i + 1}`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover hover:opacity-90 transition-opacity"
                 onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
               />
             </div>
           ))}
         </div>
+      </div>
 
+      {/* ── 메타데이터 영역 ── */}
+      <div className="bg-surface border border-border rounded-2xl divide-y divide-border">
         {/* 업체명 + 카테고리 */}
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
           <p className="font-bold text-[18px] leading-snug truncate">{place.title}</p>
@@ -241,10 +303,6 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
             </span>
           )}
         </div>
-      </div>
-
-      {/* ── 메타데이터 영역 ── */}
-      <div className="bg-surface border border-border rounded-2xl divide-y divide-border">
 
         {/* 위치 정보 (주소 + 도보시간 통합) */}
         <div className="flex items-start gap-3 px-4 py-3.5">

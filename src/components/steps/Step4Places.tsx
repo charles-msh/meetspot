@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2 } from "lucide-react";
-import { displayName } from "@/data/stations";
 
 interface Props {
   station: RecommendedStation;
@@ -206,23 +205,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
   return (
     <div className="space-y-4">
-      {/* 선택된 역 정보 */}
-      <div className="bg-surface border border-border rounded-2xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-text-muted font-medium">약속 장소</p>
-            <p className="text-lg font-bold mt-0.5">{displayName(station.name)}역 근처</p>
-          </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1 text-sm text-foreground justify-end">
-              {venue.icon}
-              <span className="font-medium">{venue.label}</span>
-            </div>
-            <p className="text-[10px] text-text-muted mt-0.5">{meetingLabel}에 딱 맞는 추천</p>
-          </div>
-        </div>
-      </div>
-
       {/* 음식 필터 (식당일 때만) */}
       {/* 5번: 오른쪽 페이드 아웃으로 스크롤 가능 암시 */}
       {showFoodFilter && (
