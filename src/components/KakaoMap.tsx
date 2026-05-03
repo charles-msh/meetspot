@@ -40,6 +40,8 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
         content: `<div style="padding:6px 10px;font-size:13px;font-weight:700;white-space:nowrap;">${n}</div>`,
       });
       infowindow.open(map, marker);
+      // 바텀시트 애니메이션 완료 후 컨테이너 크기 재계산 (초기 렌더 시 0x0 방지)
+      setTimeout(() => map.relayout(), 100);
     }
 
     if (la && ln) {
