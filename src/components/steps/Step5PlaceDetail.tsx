@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MapPin, Clock, ArrowLeft,
   ChevronDown, ChevronUp, Loader2, X, ChevronLeft, ChevronRight,
@@ -71,6 +71,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
   const [copyToast, setCopyToast] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const swipeTouchStartX = useRef<number | null>(null);
 
   const stationData = findStation(station.name);
   const stationDisplayName = displayName(station.name);
@@ -219,8 +220,23 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
 
       {/* ── 이미지 라이트박스 ── */}
       {lightboxIndex !== null && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/90"
-             onClick={() => setLightboxIndex(null)}>
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-black/90"
+          onClick={() => setLightboxIndex(null)}
+          onTouchStart={(e) => { swipeTouchStartX.current = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            if (swipeTouchStartX.current === null || photos.length <= 1) return;
+            const delta = swipeTouchStartX.current - e.changedTouches[0].clientX;
+            swipeTouchStartX.current = null;
+            if (Math.abs(delta) < 50) return; // 50px 미만은 무시
+            setLightboxIndex((prev) =>
+              prev === null ? 0
+              : delta > 0
+                ? (prev + 1) % photos.length              // 왼쪽 스와이프 → 다음
+                : (prev - 1 + photos.length) % photos.length  // 오른쪽 스와이프 → 이전
+            );
+          }}
+        >
           {/* 닫기 버튼 */}
           <button
             className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
