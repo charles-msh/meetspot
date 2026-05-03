@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
+import { findStation } from "@/data/stations";
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
@@ -38,24 +39,47 @@ function calcWalkMins(meters: number) {
   return Math.ceil((meters / 66.7) * 1.3);
 }
 
-/** 카카오 Local Search로 좌표 근처 지하철 출구 조회 */
+/** Haversine 직선 거리 (미터) */
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371000;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * 카카오 Local Search로 역 출구 조회 후 장소에서 가장 가까운 출구 반환
+ *
+ * 핵심 원리:
+ * - 역 중심 좌표(stations.ts) 근처에서 "${역명}역 출구" 검색 → 번호 출구 POI 수집
+ * - 각 출구↔장소 거리(haversine)를 계산해 최솟값 출구 선택
+ * - 이렇게 해야 "N번 출구" POI가 실제로 반환됨 (장소 좌표 기준 검색은 결과 없음)
+ */
 async function findNearestExit(
-  lat: number,
-  lng: number,
-  stationName: string   // "이촌" → "이촌역"으로 검색
+  placeLat: number,
+  placeLng: number,
+  stationName: string
 ): Promise<NearestExit | null> {
   if (!KAKAO_REST_API_KEY) return null;
   try {
-    // SW8 = 지하철역 카테고리. 역 이름으로 검색해야 출구 POI가 조회됨
-    // "출구" 키워드로는 결과 없음 — "이촌역" 처럼 역명 사용
+    // 1단계: stations.ts 에서 역 중심 좌표 가져오기
+    const stData = findStation(stationName);
+    const searchLat = stData?.lat ?? placeLat;
+    const searchLng = stData?.lng ?? placeLng;
+
+    // 2단계: 역 중심 좌표 기준으로 출구 검색
     const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
-    url.searchParams.set("query", `${stationName}역`);
+    url.searchParams.set("query", `${stationName}역 출구`);
     url.searchParams.set("category_group_code", "SW8");
-    url.searchParams.set("x", String(lng));
-    url.searchParams.set("y", String(lat));
-    url.searchParams.set("radius", "700");
+    url.searchParams.set("x", String(searchLng));
+    url.searchParams.set("y", String(searchLat));
+    url.searchParams.set("radius", "600");
     url.searchParams.set("sort", "distance");
-    url.searchParams.set("size", "10");
+    url.searchParams.set("size", "15");
 
     const res = await fetch(url.toString(), {
       headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
@@ -63,18 +87,28 @@ async function findNearestExit(
     if (!res.ok) return null;
 
     const data = await res.json();
-    const docs: { place_name: string; distance: string }[] =
+    const docs: { place_name: string; x: string; y: string }[] =
       data.documents ?? [];
 
-    // "X번 출구" 패턴을 포함하는 첫 번째 결과 사용
-    const exit = docs.find((d) => /\d+번\s*출구/.test(d.place_name));
-    if (!exit) return null;
+    // 3단계: "N번 출구" 패턴 필터링
+    const exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
+    if (exits.length === 0) return null;
 
-    const distanceM = parseInt(exit.distance, 10);
+    // 4단계: 각 출구↔장소 haversine 거리로 가장 가까운 출구 선택
+    let best = exits[0];
+    let bestDist = haversine(
+      placeLat, placeLng,
+      parseFloat(exits[0].y), parseFloat(exits[0].x)
+    );
+    for (const exit of exits.slice(1)) {
+      const d = haversine(placeLat, placeLng, parseFloat(exit.y), parseFloat(exit.x));
+      if (d < bestDist) { best = exit; bestDist = d; }
+    }
+
     return {
-      name: exit.place_name,           // "이촌역 4번 출구"
-      distanceM,
-      walkMins: calcWalkMins(distanceM),
+      name: best.place_name,
+      distanceM: Math.round(bestDist),
+      walkMins: calcWalkMins(bestDist),
     };
   } catch {
     return null;
@@ -90,8 +124,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // v2: 캐시 키 버전 업 (nearestExit 필드 추가로 기존 캐시 무효화)
-  const cacheKey = `hoursv2:${station}:${name}`;
+  // v3: 캐시 키 버전 업 (nearestExit 검색 로직 개선으로 기존 캐시 무효화)
+  const cacheKey = `hoursv3:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
