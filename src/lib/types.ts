@@ -29,3 +29,13 @@ export interface Place {
   link: string;
   description: string;
 }
+
+export interface PlaceItem {
+  title: string;
+  category: string;
+  address: string;
+  roadAddress: string;
+  link: string;
+  telephone: string;
+  imageUrls: string[];
+}

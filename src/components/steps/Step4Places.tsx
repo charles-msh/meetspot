@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { RecommendedStation, VenueType, MeetingType } from "@/lib/types";
+import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2 } from "lucide-react";
 import { displayName } from "@/data/stations";
 
@@ -11,6 +11,8 @@ interface Props {
   meetingType: MeetingType;
   onBack: () => void;
   onRestart: () => void;
+  onSelectPlace: (place: PlaceItem) => void;
+  scrollRef?: React.RefObject<HTMLElement | null>;
 }
 
 const venueLabels: Record<VenueType, { label: string; icon: React.ReactNode }> = {
@@ -68,20 +70,10 @@ const foodFilters = [
 
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
 
-interface PlaceItem {
-  title: string;
-  category: string;
-  address: string;
-  roadAddress: string;
-  link: string;
-  telephone: string;
-  imageUrls: string[];
-}
-
 // 캐시 타입: 필터명 → { items, nextStart, hasMore }
 interface CacheEntry { items: PlaceItem[]; nextStart: number; hasMore: boolean; }
 
-export default function Step4Places({ station, venueType, meetingType, onBack, onRestart }: Props) {
+export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef }: Props) {
   const [filter, setFilter] = useState("전체");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -163,9 +155,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       setCache(prev => {
         const entry = prev.get(filter);
         if (!entry) return prev;
-        const existingKeys = new Set(entry.items.map(p => `${p.title}__${p.roadAddress}`));
+        const existingKeys = new Set(
+          entry.items.map(p => p.title.replace(/\s/g, "").toLowerCase())
+        );
         const newItems = (data.items || []).filter(
-          (p: PlaceItem) => !existingKeys.has(`${p.title}__${p.roadAddress}`)
+          (p: PlaceItem) => !existingKeys.has(p.title.replace(/\s/g, "").toLowerCase())
         );
         return new Map(prev).set(filter, {
           items: [...entry.items, ...newItems],
@@ -179,6 +173,25 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       setLoadingMore(false);
     }
   }, [buildQuery, filter, nextStart, loadingMore]);
+
+  // 무한스크롤: sentinel 요소가 실제 스크롤 컨테이너(main) 기준으로 감지
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchMore();
+        }
+      },
+      {
+        root: scrollRef?.current ?? null,
+        threshold: 0.1,
+      }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, fetchMore, scrollRef]);
 
   async function handleFilterClick(f: string) {
     setFilter(f);
@@ -252,7 +265,8 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
           places.map((place, i) => (
             <div
               key={i}
-              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm transition-all"
+              onClick={() => onSelectPlace(place)}
+              className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm active:scale-[0.99] transition-all cursor-pointer"
             >
               {/* 업체명 + 카테고리 + 아이콘 */}
               <div className="px-4 pt-3.5 pb-3 flex items-start gap-2">
@@ -301,21 +315,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         )}
       </div>
 
-      {/* 더 보기 버튼 */}
-      {!loading && places.length > 0 && hasMore && (
-        <button
-          onClick={fetchMore}
-          disabled={loadingMore}
-          className="w-full py-3 rounded-2xl text-sm font-medium border border-border
-                     bg-surface hover:bg-surface-hover transition-colors
-                     flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {loadingMore ? (
-            <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
-          ) : (
-            "결과 더 보기"
-          )}
-        </button>
+      {/* 무한스크롤 sentinel */}
+      {!loading && places.length > 0 && (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          {loadingMore && <Loader2 className="w-5 h-5 animate-spin text-text-muted" />}
+        </div>
       )}
 
       {/* 하단 버튼 */}

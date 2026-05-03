@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { searchStations, displayName, type Station } from "@/data/stations";
 import { LineBadge } from "@/lib/lineColors";
 import { MapPin, CheckCircle2, Search } from "lucide-react";
@@ -16,36 +16,16 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   const [results, setResults] = useState<Station[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const isSelected = value !== "" && query === displayName(value);
-
-  // 드롭다운 위치를 input 기준으로 계산 (fixed 포지셔닝용)
-  const updateDropdownPos = useCallback(() => {
-    if (!inputRef.current) return;
-    const rect = inputRef.current.getBoundingClientRect();
-    setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-  }, []);
 
   useEffect(() => {
     setQuery(value ? displayName(value) : "");
     if (!value) setHasSearched(false);
   }, [value]);
 
-  // 드롭다운 열릴 때 위치 계산 + 스크롤/리사이즈 시 재계산
-  useEffect(() => {
-    if (!isOpen) return;
-    updateDropdownPos();
-    window.addEventListener("scroll", updateDropdownPos, true);
-    window.addEventListener("resize", updateDropdownPos);
-    return () => {
-      window.removeEventListener("scroll", updateDropdownPos, true);
-      window.removeEventListener("resize", updateDropdownPos);
-    };
-  }, [isOpen, updateDropdownPos]);
-
+  // 외부 클릭 시 드롭다운 닫기
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -73,6 +53,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
   }
 
   return (
+    // overflow:visible 이어야 absolute 드롭다운이 카드 밖으로 나올 수 있음
     <div ref={wrapperRef} className="relative">
       <div className="relative">
         {isSelected ? (
@@ -81,15 +62,10 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
           <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         )}
         <input
-          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => handleInput(e.target.value)}
-          onFocus={() => {
-            if (results.length > 0) {
-              setIsOpen(true);
-            }
-          }}
+          onFocus={() => { if (results.length > 0) setIsOpen(true); }}
           placeholder={placeholder}
           className={`w-full pl-9 pr-3 py-2.5 bg-surface border rounded-xl text-base
                      focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/10 focus:border-[#1A1A1A]
@@ -98,19 +74,21 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
         />
       </div>
 
-      {/* 드롭다운: fixed 포지셔닝으로 부모 overflow에 잘리지 않음 */}
+      {/*
+        absolute + top-full: 항상 입력창 바로 아래 위치 → 입력창을 절대 덮지 않음
+        fixed 는 iOS Safari에서 키보드 팝업 시 레이아웃 뷰포트 기준으로 어긋나는 버그 있음
+        z-[200]: 다른 참여자 카드 위에 표시
+      */}
       {isOpen && (
-        <ul
-          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
-          className="fixed z-[200] bg-white border border-border rounded-xl shadow-lg
-                     max-h-48 overflow-y-auto"
-        >
+        <ul className="absolute top-full left-0 right-0 z-[200] mt-1
+                       bg-white border border-border rounded-xl shadow-lg
+                       max-h-[200px] overflow-y-auto">
           {results.length > 0 ? (
             results.map((station) => (
               <li key={station.name}>
                 <button
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()} // blur 방지
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(station)}
                   className="w-full px-3 py-2.5 text-left text-sm hover:bg-surface-hover
                              flex items-center gap-2 transition-colors"

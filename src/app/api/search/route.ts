@@ -31,16 +31,19 @@ async function checkAndIncrement(api: "places" | "vision"): Promise<boolean> {
 }
 
 // 음식 관련 Vision API 라벨
+// 매장 외관·인테리어에도 붙는 "Fast food", "Restaurant", "Menu" 등은 제외
+// 실제 음식·재료가 찍힌 사진만 선별
 const FOOD_LABELS = new Set([
   "Food", "Dish", "Cuisine", "Recipe", "Ingredient", "Meal", "Cooking",
-  "Fast food", "Junk food", "Street food", "Comfort food",
-  "Korean food", "Japanese cuisine", "Chinese food", "Italian food",
-  "Pizza", "Sushi", "Ramen", "Noodle", "Rice", "Soup", "Stew",
-  "Meat", "Beef", "Pork", "Chicken", "Seafood", "Fish", "Shrimp",
-  "Vegetable", "Salad", "Bread", "Cake", "Dessert", "Snack",
-  "Drink", "Beverage", "Coffee", "Beer", "Wine",
-  "Restaurant", "Menu", "Plate", "Bowl", "Tableware",
+  "Pizza", "Sushi", "Ramen", "Noodle", "Rice", "Soup", "Stew", "Dumpling",
+  "Meat", "Beef", "Pork", "Chicken", "Seafood", "Fish", "Shrimp", "Crab",
+  "Vegetable", "Salad", "Bread", "Cake", "Dessert", "Snack", "Baking",
+  "Drink", "Beverage", "Coffee", "Beer", "Wine", "Cocktail",
+  "Hamburger", "Sandwich", "Taco", "Pasta", "Steak", "Barbecue",
 ]);
+
+// foodScore 최소 임계값: 이 이상이어야 음식 사진으로 분류
+const FOOD_SCORE_THRESHOLD = 0.5;
 
 // Google Vision API로 이미지 중 음식 사진 필터링 → 상위 6장 반환
 async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
@@ -54,10 +57,43 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
   }
 
   try {
-    const requests = imageUrls.map((url) => ({
-      image: { source: { imageUri: url } },
-      features: [{ type: "LABEL_DETECTION", maxResults: 10 }],
-    }));
+    // Naver CDN은 Google 서버의 직접 접근을 차단 → 우리 서버에서 먼저 fetch해서 base64로 변환
+    const imageContents = await Promise.all(
+      imageUrls.map(async (url, idx) => {
+        try {
+          const r = await fetch(url, {
+            headers: {
+              "Referer": "https://www.naver.com",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+          if (!r.ok) {
+            console.warn(`[Vision] img[${idx}] fetch 실패: ${r.status} ${url.slice(0, 80)}`);
+            return null;
+          }
+          const buf = await r.arrayBuffer();
+          // 5KB 미만 = 지나치게 작은 썸네일 → 화질 불량으로 제외
+          if (buf.byteLength < 5000) {
+            console.warn(`[Vision] img[${idx}] 파일 크기 미달: ${buf.byteLength}bytes`);
+            return null;
+          }
+          console.log(`[Vision] img[${idx}] fetch 성공: ${buf.byteLength}bytes`);
+          return Buffer.from(buf).toString("base64");
+        } catch (e) {
+          console.warn(`[Vision] img[${idx}] fetch 예외: ${e}`);
+          return null;
+        }
+      })
+    );
+    const b64Count = imageContents.filter(Boolean).length;
+    console.log(`[Vision] base64 변환 성공: ${b64Count}/${imageUrls.length}장`);
+
+    const requests = imageUrls.map((url, i) => {
+      const b64 = imageContents[i];
+      return b64
+        ? { image: { content: b64 }, features: [{ type: "LABEL_DETECTION", maxResults: 10 }] }
+        : { image: { source: { imageUri: url } }, features: [{ type: "LABEL_DETECTION", maxResults: 10 }] };
+    });
 
     const res = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_PLACES_API_KEY}`,
@@ -67,18 +103,23 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
         body: JSON.stringify({ requests }),
       }
     );
-    if (!res.ok) return imageUrls.slice(0, 6);
+    if (!res.ok) {
+      console.warn(`[Vision] API 응답 오류: ${res.status}`);
+      return imageUrls.slice(0, 6);
+    }
 
     const data = await res.json();
     const scored: { url: string; score: number }[] = [];
 
     (data.responses || []).forEach((resp: Record<string, unknown>, i: number) => {
       const labels = (resp.labelAnnotations as { description: string; score: number }[]) || [];
+      const topLabels = labels.slice(0, 5).map(l => `${l.description}(${l.score.toFixed(2)})`).join(",");
       // 음식 라벨 점수 합산
       const foodScore = labels
         .filter((l) => FOOD_LABELS.has(l.description))
         .reduce((sum, l) => sum + l.score, 0);
-      if (foodScore > 0) {
+      console.log(`[Vision] img[${i}] foodScore=${foodScore.toFixed(2)} labels=${topLabels}`);
+      if (foodScore >= FOOD_SCORE_THRESHOLD) {
         scored.push({ url: imageUrls[i], score: foodScore });
       }
     });
@@ -87,8 +128,8 @@ async function filterFoodImages(imageUrls: string[]): Promise<string[]> {
     scored.sort((a, b) => b.score - a.score);
     const filtered = scored.map((s) => s.url).slice(0, 6);
 
-    // 음식 사진이 하나도 없으면 원본 그대로 최대 6장
-    return filtered.length > 0 ? filtered : imageUrls.slice(0, 6);
+    // 음식 사진이 하나도 없으면 빈 배열 반환 (엉뚱한 이미지 노출 방지)
+    return filtered;
   } catch {
     return imageUrls.slice(0, 6);
   }
@@ -165,14 +206,19 @@ export async function GET(request: NextRequest) {
     const raw = [...(data1.items || []), ...(data2.items || [])];
     const seen = new Set<string>();
     const combined = raw.filter((item: Record<string, string>) => {
-      const key = `${stripHtml(item.title)}__${item.roadAddress || item.address}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+      const name = stripHtml(item.title).replace(/\s/g, "").toLowerCase();
+      const addr = (item.roadAddress || item.address || "").replace(/\s/g, "");
+      // 이름만으로도 중복 체크 (주소 없는 경우 대비), 이름+주소로도 체크
+      const keyByName = name;
+      const keyByAddr = addr ? `${name}__${addr}` : "";
+      if (seen.has(keyByName)) return false;
+      seen.add(keyByName);
+      if (keyByAddr) seen.add(keyByAddr);
       return true;
     });
 
     const total: number = data1.total ?? 0;
-    const nextStart = start + combined.length;
+    const nextStart = start + 10; // 중복 제거 후 길이 기준이 아닌 Naver에서 소비한 위치 기준
     const hasMore = nextStart <= total;
 
     const naverHeaders = {
@@ -182,12 +228,23 @@ export async function GET(request: NextRequest) {
 
     const stationName = query.split("역 ")[0] || query;
 
+    // 역명 자체가 도시명인 경우 '역' 유지 (서울역→서울 하면 도시 전체로 검색됨)
+    const CITY_STATIONS = new Set([
+      "서울", "부산", "인천", "대전", "대구", "광주", "울산",
+      "수원", "전주", "청주", "춘천", "제주", "목포", "여수",
+      "순천", "창원", "진주", "포항", "경주", "안동", "강릉",
+      "원주", "천안", "평택",
+    ]);
+    const imageStationQuery = CITY_STATIONS.has(stationName)
+      ? `${stationName}역`
+      : stationName;
+
     const placesWithImages = await Promise.all(
       combined.map(async (item: Record<string, string>) => {
         const name = stripHtml(item.title);
 
-        // Redis 캐시 확인 (TTL 30일)
-        const cacheKey = `img:${stationName}:${name}`;
+        // Redis 캐시 확인 (TTL 7일 / v2: prefix로 이전 캐시 자동 무효화)
+        const cacheKey = `v2:img:${stationName}:${name}`;
         const cached = await redis.get<string[]>(cacheKey).catch(() => null);
         if (cached) {
           return {
@@ -201,35 +258,31 @@ export async function GET(request: NextRequest) {
           };
         }
 
-        // 1) Google Places 사진 시도
-        const googlePhotoUrl = await getGooglePhotoUrl(name, stationName);
-
+        // Naver 이미지 10장 수집 → Vision API로 음식 사진 필터링
+        // (Google Places는 외관 사진 위주라 제외)
         let imageUrls: string[] = [];
 
-        if (googlePhotoUrl) {
-          // Google 사진 있으면 1장
-          imageUrls = [googlePhotoUrl];
-        } else {
-          // Naver 이미지 10장 수집 → Vision API로 음식 사진 필터링
-          const imgRes = await fetch(
-            `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(name)}&display=10&sort=sim`,
-            { headers: naverHeaders }
-          ).catch(() => null);
+        const imgRes = await fetch(
+          `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(`${name} ${imageStationQuery} 맛집`)}&display=10&sort=sim`,
+          { headers: naverHeaders }
+        ).catch(() => null);
 
-          if (imgRes?.ok) {
-            const d = await imgRes.json();
-            const naverUrls: string[] = (d.items || [])
-              .map((img: Record<string, string>) => img.thumbnail || img.link || "")
-              .filter(Boolean);
+        if (imgRes?.ok) {
+          const d = await imgRes.json();
+          const naverUrls: string[] = (d.items || [])
+            .map((img: Record<string, string>) => {
+              const thumb = img.thumbnail || "";
+              // b150(150x150 크롭) → w600(600px 원본 비율) 으로 업스케일
+              return thumb.replace(/type=b\d+/g, "type=w600").replace(/type=a\d+/g, "type=w600");
+            })
+            .filter(Boolean);
 
-            // Vision API로 음식 사진 필터링
-            imageUrls = await filterFoodImages(naverUrls);
-          }
+          imageUrls = await filterFoodImages(naverUrls);
         }
 
-        // Redis에 30일 캐시 저장
+        // Redis에 7일 캐시 저장 (30일은 오래된 잘못된 이미지가 계속 노출되는 문제 있었음)
         if (imageUrls.length > 0) {
-          await redis.set(cacheKey, imageUrls, { ex: 60 * 60 * 24 * 30 }).catch(() => null);
+          await redis.set(cacheKey, imageUrls, { ex: 60 * 60 * 24 * 7 }).catch(() => null);
         }
 
         return {
