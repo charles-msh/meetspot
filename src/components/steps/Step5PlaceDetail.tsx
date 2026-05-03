@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  MapPin, Navigation, Clock, ArrowLeft, ExternalLink,
-  ChevronDown, ChevronUp, Loader2, Copy,
+  MapPin, Clock, ArrowLeft,
+  ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 import type { PlaceItem, RecommendedStation } from "@/lib/types";
 import type { PlaceHoursResult } from "@/app/api/place-hours/route";
 import { findStation, displayName } from "@/data/stations";
+import { LineBadge } from "@/lib/lineColors";
 
 interface Props {
   place: PlaceItem;
@@ -176,31 +177,51 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
       {/* ── 메타데이터 영역 ── */}
       <div className="bg-surface border border-border rounded-2xl divide-y divide-border">
 
-        {/* 주소 */}
-        {displayAddress && (
-          <div className="flex items-start gap-3 px-4 py-3.5">
-            <MapPin className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
-            <p className="flex-1 text-sm text-foreground leading-snug">{displayAddress}</p>
-            <button
-              onClick={handleCopyAddress}
-              className="shrink-0 flex items-center gap-1 text-xs text-text-muted hover:text-foreground transition-colors mt-0.5"
-            >
-              <Copy className="w-3 h-3" />
-              복사
-            </button>
+        {/* 위치 정보 (주소 + 도보시간 통합) */}
+        <div className="flex items-start gap-3 px-4 py-3.5">
+          <MapPin className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {/* 주소 */}
+            <p className="text-sm text-foreground leading-snug">
+              {displayAddress || "주소 정보 없음"}
+            </p>
+            {/* 도보시간 + 복사/지도 링크 */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* 노선 배지 */}
+              {station.line.map((l) => (
+                <LineBadge key={l} line={l} />
+              ))}
+              {/* 도보 텍스트 */}
+              {hoursLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin text-text-muted" />
+              ) : walkingInfo ? (
+                <span className="text-xs text-text-muted">{walkingInfo}</span>
+              ) : (
+                <span className="text-xs text-text-muted">{stationDisplayName}역 근처</span>
+              )}
+              {/* 복사 · 지도 링크 */}
+              <div className="ml-auto flex items-center gap-2.5 shrink-0">
+                <button
+                  onClick={handleCopyAddress}
+                  className="text-xs text-text-muted hover:text-foreground transition-colors"
+                >
+                  복사
+                </button>
+                <a
+                  href={
+                    place.link && place.link.includes("naver")
+                      ? place.link
+                      : `https://map.naver.com/v5/search/${encodeURIComponent(place.title + " " + stationDisplayName + "역")}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-text-muted hover:text-foreground transition-colors"
+                >
+                  지도
+                </a>
+              </div>
+            </div>
           </div>
-        )}
-
-        {/* 도보 */}
-        <div className="flex items-center gap-3 px-4 py-3.5">
-          <Navigation className="w-4 h-4 text-text-muted shrink-0" />
-          {hoursLoading && !walkingInfo ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" />
-          ) : walkingInfo ? (
-            <p className="text-sm text-foreground">{walkingInfo}</p>
-          ) : (
-            <p className="text-sm text-text-muted">경로 정보 없음</p>
-          )}
         </div>
 
         {/* 영업시간 */}
@@ -252,21 +273,6 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
           </div>
         </div>
       </div>
-
-      {/* ── 네이버 지도 바로가기 ── */}
-      {place.link && (
-        <a
-          href={place.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl
-                     bg-[#03C75A] text-white text-sm font-semibold
-                     hover:bg-[#02b350] active:bg-[#029f47] transition-colors"
-        >
-          <ExternalLink className="w-4 h-4" />
-          네이버 지도에서 보기
-        </a>
-      )}
 
       {/* ── 하단 버튼 ── */}
       <div className="space-y-2 pt-1">
