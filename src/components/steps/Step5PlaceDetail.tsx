@@ -113,7 +113,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
     try {
       await navigator.clipboard.writeText(addr);
       setCopyToast(true);
-      setTimeout(() => setCopyToast(false), 2000);
+      setTimeout(() => setCopyToast(false), 1000);
     } catch { /* 구형 브라우저 무시 */ }
   }
 
