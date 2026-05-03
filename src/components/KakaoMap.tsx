@@ -9,107 +9,124 @@ interface Props {
   lng?: number | null;
 }
 
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    kakao: any;
-  }
-}
+// Leaflet CSS CDN — injected once into <head>
+const LEAFLET_CSS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const LEAFLET_ICON_BASE = "https://unpkg.com/leaflet@1.9.4/dist/images";
 
-const KAKAO_SDK_SRC = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&libraries=services`;
+function ensureLeafletCss() {
+  if (typeof document === "undefined") return;
+  if (document.querySelector('link[data-leaflet-css]')) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = LEAFLET_CSS_URL;
+  link.dataset.leafletCss = "1";
+  document.head.appendChild(link);
+}
 
 export default function KakaoMap({ name, address, lat, lng }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [sdkReady, setSdkReady] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  // 최신 props를 initMap 안에서 참조하기 위한 ref
+  // Keep latest props accessible inside the async init without re-running effect
   const propsRef = useRef({ name, address, lat, lng });
   propsRef.current = { name, address, lat, lng };
-
-  function initMap() {
-    const { name: n, address: addr, lat: la, lng: ln } = propsRef.current;
-    if (!mapRef.current || !window.kakao?.maps) return;
-    const kakao = window.kakao;
-
-    function renderAt(coordLat: number, coordLng: number) {
-      if (!mapRef.current) return;
-      const center = new kakao.maps.LatLng(coordLat, coordLng);
-      const map = new kakao.maps.Map(mapRef.current, { center, level: 3 });
-      const marker = new kakao.maps.Marker({ position: center, map });
-      const infowindow = new kakao.maps.InfoWindow({
-        content: `<div style="padding:6px 10px;font-size:13px;font-weight:700;white-space:nowrap;">${n}</div>`,
-      });
-      infowindow.open(map, marker);
-      // 바텀시트 애니메이션 완료 후 컨테이너 크기 재계산 (초기 렌더 시 0x0 방지)
-      setTimeout(() => map.relayout(), 100);
-    }
-
-    if (la && ln) {
-      renderAt(la, ln);
-      return;
-    }
-
-    // 좌표 없으면 Kakao Places로 업체명+주소 검색
-    const ps = new kakao.maps.services.Places();
-    const query = addr ? `${n} ${addr}` : n;
-    ps.keywordSearch(query, (data: Record<string, string>[], status: string) => {
-      if (status === kakao.maps.services.Status.OK && data.length > 0) {
-        renderAt(parseFloat(data[0].y), parseFloat(data[0].x));
-      } else {
-        setLoadError(true);
-      }
-    });
-  }
+  const destroyRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    // 이미 SDK 로드돼 있으면 (바텀시트 재오픈 등) 바로 초기화
-    if (window.kakao?.maps) {
-      window.kakao.maps.load(() => { setSdkReady(true); initMap(); });
-      return;
-    }
+    let cancelled = false;
 
-    // 이미 같은 스크립트 태그가 DOM에 있는 경우
-    const existing = document.querySelector(
-      `script[src*="dapi.kakao.com/v2/maps"]`
-    ) as HTMLScriptElement | null;
+    async function init() {
+      try {
+        ensureLeafletCss();
 
-    if (existing) {
-      // 이전에 실패한 스크립트 태그면 제거하고 재시도
-      if (existing.dataset.status === "failed") {
-        existing.remove();
-      } else {
-        // 로딩 중인 스크립트 - load/error 이벤트 대기
-        const onLoad = () => { window.kakao.maps.load(() => { setSdkReady(true); initMap(); }); };
-        const onError = () => setLoadError(true);
-        existing.addEventListener("load", onLoad);
-        existing.addEventListener("error", onError);
-        return () => {
-          existing.removeEventListener("load", onLoad);
-          existing.removeEventListener("error", onError);
-        };
+        // Dynamic import avoids SSR issues — Leaflet requires window/document
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const L = (await import("leaflet")) as any;
+        const Leaflet = L.default ?? L;
+
+        if (cancelled || !mapRef.current) return;
+
+        // Fix default marker icon path broken by webpack bundling
+        delete Leaflet.Icon.Default.prototype._getIconUrl;
+        Leaflet.Icon.Default.mergeOptions({
+          iconUrl: `${LEAFLET_ICON_BASE}/marker-icon.png`,
+          iconRetinaUrl: `${LEAFLET_ICON_BASE}/marker-icon-2x.png`,
+          shadowUrl: `${LEAFLET_ICON_BASE}/marker-shadow.png`,
+        });
+
+        const { name: n, address: addr, lat: la, lng: ln } = propsRef.current;
+
+        let coordLat = la ?? undefined;
+        let coordLng = ln ?? undefined;
+
+        // No coordinates → geocode via OpenStreetMap Nominatim (free, no key)
+        if (!coordLat || !coordLng) {
+          const query = addr ? `${n} ${addr}` : n;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+              query
+            )}&format=json&limit=1&countrycodes=kr`,
+            {
+              headers: {
+                "Accept-Language": "ko",
+                "User-Agent": "meetspot/1.0 (https://meetspot-chi.vercel.app)",
+              },
+            }
+          );
+          if (!res.ok) throw new Error("geocode request failed");
+          const data: { lat: string; lon: string }[] = await res.json();
+          if (data.length === 0) throw new Error("location not found");
+          coordLat = parseFloat(data[0].lat);
+          coordLng = parseFloat(data[0].lon);
+        }
+
+        if (cancelled || !mapRef.current) return;
+
+        const map = Leaflet.map(mapRef.current, {
+          center: [coordLat, coordLng],
+          zoom: 17,
+          zoomControl: true,
+        });
+
+        destroyRef.current = () => map.remove();
+
+        Leaflet.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution:
+              '© <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+            maxZoom: 19,
+          }
+        ).addTo(map);
+
+        Leaflet.marker([coordLat, coordLng])
+          .addTo(map)
+          .bindPopup(
+            `<strong style="font-size:13px;white-space:nowrap;">${n}</strong>`
+          )
+          .openPopup();
+
+        // Recalculate size after bottom-sheet CSS transition finishes
+        setTimeout(() => map.invalidateSize(), 150);
+
+        if (!cancelled) setLoading(false);
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadError(true);
+        }
       }
     }
 
-    // 스크립트 주입
-    const script = document.createElement("script");
-    script.src = KAKAO_SDK_SRC;
-    script.async = true;
-    script.dataset.status = "loading";
-    script.onload = () => {
-      script.dataset.status = "loaded";
-      // sdk.js 로드 후에도 지도 클래스가 비동기로 추가 로드됨
-      // kakao.maps.load()로 완전 초기화 완료 후 initMap 실행
-      window.kakao.maps.load(() => { setSdkReady(true); initMap(); });
-    };
-    script.onerror = () => { script.dataset.status = "failed"; setLoadError(true); };
-    document.head.appendChild(script);
+    init();
 
     return () => {
-      script.onload = null;
-      script.onerror = null;
+      cancelled = true;
+      destroyRef.current?.();
+      destroyRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 마운트 시 1회 실행 - props는 propsRef로 최신 값 참조
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount once — latest props read via propsRef
 
   return (
     <div className="w-full h-full relative">
@@ -117,7 +134,7 @@ export default function KakaoMap({ name, address, lat, lng }: Props) {
       <div ref={mapRef} className="w-full h-full" />
 
       {/* 로딩 오버레이 */}
-      {!sdkReady && !loadError && (
+      {loading && !loadError && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
           <p className="text-sm text-text-muted">지도 불러오는 중...</p>
         </div>
