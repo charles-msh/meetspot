@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2 } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Props {
   station: RecommendedStation;
@@ -29,67 +29,40 @@ const meetingTypeLabels: Record<MeetingType, string> = {
   family: "가족 모임",
 };
 
-// 약속 유형별 검색 키워드 (네이버 검색에 반영)
 const meetingKeywords: Record<MeetingType, Record<VenueType, string>> = {
-  date: {
-    restaurant: "데이트 맛집",
-    bar: "분위기 좋은 바",
-    cafe: "감성 카페",
-  },
-  friends: {
-    restaurant: "맛집",
-    bar: "술집",
-    cafe: "카페",
-  },
-  work: {
-    restaurant: "회식 맛집",
-    bar: "회식 술집",
-    cafe: "카페",
-  },
-  club: {
-    restaurant: "모임 맛집",
-    bar: "단체 술집",
-    cafe: "단체 카페",
-  },
-  business: {
-    restaurant: "비즈니스 레스토랑",
-    bar: "분위기 좋은 바",
-    cafe: "조용한 카페",
-  },
-  family: {
-    restaurant: "가족 맛집",
-    bar: "와인바",
-    cafe: "카페",
-  },
+  date: { restaurant: "데이트 맛집", bar: "분위기 좋은 바", cafe: "감성 카페" },
+  friends: { restaurant: "맛집", bar: "술집", cafe: "카페" },
+  work: { restaurant: "회식 맛집", bar: "회식 술집", cafe: "카페" },
+  club: { restaurant: "모임 맛집", bar: "단체 술집", cafe: "단체 카페" },
+  business: { restaurant: "비즈니스 레스토랑", bar: "분위기 좋은 바", cafe: "조용한 카페" },
+  family: { restaurant: "가족 맛집", bar: "와인바", cafe: "카페" },
 };
 
-const foodFilters = [
-  "전체", "한식", "일식", "중식", "양식", "패스트푸드"
-];
-
+const foodFilters = ["전체", "한식", "일식", "중식", "양식", "패스트푸드"];
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
+const ITEMS_PER_PAGE = 10;
+const MAX_PAGES = 5;
 
-// 캐시 타입: 필터명 → { items, nextStart, hasMore }
-interface CacheEntry { items: PlaceItem[]; nextStart: number; hasMore: boolean; }
+// 캐시: filter → page → { items, total }
+interface PageEntry { items: PlaceItem[]; total: number; }
+type PageCache = Map<string, Map<number, PageEntry>>;
 
 export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef }: Props) {
   const [filter, setFilter] = useState("전체");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  // 필터별 결과 캐시
-  const [cache, setCache] = useState<Map<string, CacheEntry>>(new Map());
-  const prefetchedRef = useRef<Set<string>>(new Set());
+  const [pageCache, setPageCache] = useState<PageCache>(new Map());
+  const prefetchedRef = useRef<Set<string>>(new Set()); // "filter:page"
 
   const venue = venueLabels[venueType];
   const meetingLabel = meetingTypeLabels[meetingType];
   const showFoodFilter = venueType === "restaurant";
 
-  // 현재 필터의 캐시 데이터
-  const current = cache.get(filter);
-  const places = current?.items ?? [];
-  const nextStart = current?.nextStart ?? 11;
-  const hasMore = current?.hasMore ?? false;
+  const currentEntry = pageCache.get(filter)?.get(page);
+  const places = currentEntry?.items ?? [];
+  const total = currentEntry?.total ?? 0;
+  const totalPages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)));
 
   const buildQuery = useCallback((foodFilter: string) => {
     const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
@@ -97,45 +70,47 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     return `${station.name}역 ${keyword}${filterPart}`;
   }, [station.name, meetingType, venueType]);
 
-  // 특정 필터 fetch → 캐시 저장
-  const fetchFilter = useCallback(async (f: string, showLoading = false): Promise<boolean> => {
-    if (prefetchedRef.current.has(f)) return true;
-    prefetchedRef.current.add(f);
-    if (showLoading) setLoading(true);
+  const fetchPage = useCallback(async (f: string, p: number): Promise<boolean> => {
+    const key = `${f}:${p}`;
+    if (prefetchedRef.current.has(key)) return true;
+    prefetchedRef.current.add(key);
     try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&start=1`);
+      const start = (p - 1) * ITEMS_PER_PAGE + 1;
+      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&start=${start}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setCache(prev => new Map(prev).set(f, {
-        items: data.items || [],
-        nextStart: data.nextStart ?? 11,
-        hasMore: data.hasMore ?? false,
-      }));
+      setPageCache(prev => {
+        const next = new Map(prev);
+        if (!next.has(f)) next.set(f, new Map());
+        next.get(f)!.set(p, { items: data.items || [], total: data.total ?? 0 });
+        return next;
+      });
       return true;
     } catch {
-      prefetchedRef.current.delete(f); // 실패 시 재시도 허용
+      prefetchedRef.current.delete(key);
       return false;
-    } finally {
-      if (showLoading) setLoading(false);
     }
   }, [buildQuery]);
 
-  // 마운트 시: "전체" 먼저 로드 → 나머지 필터 순차 백그라운드 프리패치
+  // 마운트: 전체 1페이지 → 나머지 필터 1페이지 백그라운드 프리패치
   useEffect(() => {
     let cancelled = false;
+    setFilter("전체");
+    setPage(1);
+    setPageCache(new Map());
+    prefetchedRef.current = new Set();
+
     async function init() {
       setLoading(true);
       setError("");
-      const ok = await fetchFilter("전체", false);
+      const ok = await fetchPage("전체", 1);
       if (!ok) setError("장소를 불러오지 못했습니다");
       setLoading(false);
 
       if (!showFoodFilter || cancelled) return;
-      // 나머지 필터 순차적으로 백그라운드 패치 (500ms 간격)
-      const rest = foodFilters.filter(f => f !== "전체");
-      for (const f of rest) {
+      for (const f of foodFilters.filter(f => f !== "전체")) {
         if (cancelled) break;
-        await fetchFilter(f, false);
+        await fetchPage(f, 1);
         await new Promise(r => setTimeout(r, 500));
       }
     }
@@ -144,68 +119,39 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [station.name, meetingType, venueType]);
 
-  const fetchMore = useCallback(async () => {
-    if (loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(filter))}&start=${nextStart}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setCache(prev => {
-        const entry = prev.get(filter);
-        if (!entry) return prev;
-        const existingKeys = new Set(
-          entry.items.map(p => p.title.replace(/\s/g, "").toLowerCase())
-        );
-        const newItems = (data.items || []).filter(
-          (p: PlaceItem) => !existingKeys.has(p.title.replace(/\s/g, "").toLowerCase())
-        );
-        return new Map(prev).set(filter, {
-          items: [...entry.items, ...newItems],
-          nextStart: data.nextStart ?? nextStart + 10,
-          hasMore: data.hasMore ?? false,
-        });
-      });
-    } catch {
-      // 조용히 무시
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [buildQuery, filter, nextStart, loadingMore]);
-
-  // 무한스크롤: sentinel 요소가 실제 스크롤 컨테이너(main) 기준으로 감지
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!sentinelRef.current) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
-          fetchMore();
-        }
-      },
-      {
-        root: scrollRef?.current ?? null,
-        threshold: 0.1,
-      }
-    );
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasMore, loadingMore, loading, fetchMore, scrollRef]);
-
-  async function handleFilterClick(f: string) {
-    setFilter(f);
-    // 아직 캐시 없으면 즉시 fetch (백그라운드가 아직 못 가져온 경우)
-    if (!prefetchedRef.current.has(f)) {
+  async function goToPage(p: number) {
+    if (p < 1 || p > totalPages || p === page) return;
+    scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setPage(p);
+    if (!prefetchedRef.current.has(`${filter}:${p}`)) {
       setLoading(true);
-      await fetchFilter(f, false);
+      await fetchPage(filter, p);
       setLoading(false);
     }
   }
 
+  async function handleFilterClick(f: string) {
+    if (f === filter) return;
+    scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setFilter(f);
+    setPage(1);
+    if (!prefetchedRef.current.has(`${f}:1`)) {
+      setLoading(true);
+      await fetchPage(f, 1);
+      setLoading(false);
+    }
+  }
+
+  function getPageNumbers(): number[] {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (page <= 3) return [1, 2, 3, 4, 5];
+    if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  }
 
   return (
     <div className="space-y-4">
-      {/* 약속 컨텍스트 (venue + meeting type) */}
+      {/* 약속 컨텍스트 */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 text-sm text-foreground">
           {venue.icon}
@@ -215,8 +161,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         <span className="text-sm text-text-muted">{meetingLabel}에 딱 맞는 추천</span>
       </div>
 
-      {/* 음식 필터 (식당일 때만) */}
-      {/* 5번: 오른쪽 페이드 아웃으로 스크롤 가능 암시 */}
+      {/* 음식 필터 */}
       {showFoodFilter && (
         <div className="flex flex-wrap gap-2">
           {foodFilters.map((f) => (
@@ -245,12 +190,16 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         ) : error ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-sm">{error}</p>
-            <button onClick={() => { prefetchedRef.current.delete(filter); handleFilterClick(filter); }} className="mt-3 text-foreground text-sm font-medium underline">
+            <button
+              onClick={() => { prefetchedRef.current.delete(`${filter}:1`); handleFilterClick(filter); }}
+              className="mt-3 text-foreground text-sm font-medium underline"
+            >
               다시 시도
             </button>
           </div>
         ) : places.length === 0 ? (
           <div className="text-center py-8 text-text-muted text-sm">
+            <Search className="w-4 h-4 mx-auto mb-2" />
             해당 조건의 장소를 찾지 못했습니다
           </div>
         ) : (
@@ -260,7 +209,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               onClick={() => onSelectPlace(place)}
               className="bg-surface border border-border rounded-2xl overflow-hidden hover:shadow-sm active:scale-[0.99] transition-all cursor-pointer"
             >
-              {/* 업체명 + 카테고리 + 아이콘 */}
               <div className="px-4 pt-3.5 pb-3 flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-[15px] leading-snug">{place.title}</p>
@@ -289,7 +237,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 </div>
               </div>
 
-              {/* 가로 스크롤 사진 스트립 */}
               <div className="flex gap-1 overflow-x-auto scrollbar-hide px-4 pb-3">
                 {(place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage]).map((url, j) => (
                   <div key={j} className="shrink-0 w-[120px] h-[120px] overflow-hidden bg-gray-100">
@@ -307,10 +254,40 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         )}
       </div>
 
-      {/* 무한스크롤 sentinel */}
-      {!loading && places.length > 0 && (
-        <div ref={sentinelRef} className="flex justify-center py-3">
-          {loadingMore && <Loader2 className="w-5 h-5 animate-spin text-text-muted" />}
+      {/* 페이지네이션 */}
+      {!loading && places.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1 py-2">
+          <button
+            onClick={() => goToPage(page - 1)}
+            disabled={page === 1}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted
+                       disabled:opacity-30 hover:bg-surface-hover transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {getPageNumbers().map((p) => (
+            <button
+              key={p}
+              onClick={() => goToPage(p)}
+              className={`w-8 h-8 rounded-lg text-sm font-medium transition-all
+                ${p === page
+                  ? "bg-[#111] text-white"
+                  : "text-text-muted hover:bg-surface-hover"
+                }`}
+            >
+              {p}
+            </button>
+          ))}
+
+          <button
+            onClick={() => goToPage(page + 1)}
+            disabled={page === totalPages}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted
+                       disabled:opacity-30 hover:bg-surface-hover transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 
