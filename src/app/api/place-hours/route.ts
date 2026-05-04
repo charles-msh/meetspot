@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
-import { findStation } from "@/data/stations";
+import { stationExits } from "@/data/stationExits";
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
-const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
 const TMAP_APP_KEY = process.env.TMAP_APP_KEY!;
 const redis = Redis.fromEnv();
 
@@ -19,11 +18,11 @@ interface Period {
 }
 
 export interface NearestExit {
-  /** 카카오 place_name 그대로: "이촌역 4번 출구" */
+  /** 출구 표시명: "4번 출구" */
   name: string;
   /** 장소로부터의 직선거리(m) */
   distanceM: number;
-  /** 도보 분 (haversine × 보정) */
+  /** 도보 분 */
   walkMins: number;
 }
 
@@ -90,80 +89,46 @@ async function tmapWalkSeconds(
 }
 
 /**
- * ① 카카오: 역 중심 좌표 기준으로 모든 번호 출구 POI 수집
- * ② T map: 각 출구 → 장소 실제 도보 시간 병렬 조회
- * ③ 도보 시간이 가장 짧은 출구 반환
+ * stationExits.ts(OSM 정적 데이터)에서 출구 목록을 가져와
+ * T map 도보 시간 기준으로 가장 가까운 출구를 반환
  */
 async function findNearestExit(
   placeLat: number,
   placeLng: number,
   stationName: string
 ): Promise<NearestExit | null> {
-  if (!KAKAO_REST_API_KEY) return null;
   try {
-    // 1단계: stations.ts에서 역 중심 좌표 조회
-    const stData = findStation(stationName);
-    const searchLat = stData?.lat ?? placeLat;
-    const searchLng = stData?.lng ?? placeLng;
+    const exits = stationExits[stationName];
+    if (!exits || exits.length === 0) return null;
 
-    // 2단계: 카카오 키워드 검색으로 출구 POI 조회 (두 번 시도)
-    async function fetchExits(useCategory: boolean) {
-      const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
-      url.searchParams.set("query", `${stationName}역 출구`);
-      if (useCategory) url.searchParams.set("category_group_code", "SW8");
-      url.searchParams.set("x", String(searchLng));
-      url.searchParams.set("y", String(searchLat));
-      url.searchParams.set("radius", "1000");
-      url.searchParams.set("sort", "distance");
-      url.searchParams.set("size", "15");
-      const r = await fetch(url.toString(), {
-        headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` },
-      });
-      if (!r.ok) return [];
-      const d = await r.json();
-      return (d.documents ?? []) as { place_name: string; x: string; y: string }[];
-    }
-
-    // SW8 카테고리로 먼저 시도 → 출구 없으면 카테고리 없이 재시도
-    let docs = await fetchExits(true);
-    let exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
-    if (exits.length === 0) {
-      docs = await fetchExits(false);
-      exits = docs.filter((d) => /\d+번\s*출구/.test(d.place_name));
-    }
-    if (exits.length === 0) return null;
-
-    // 4단계: 모든 출구에 대해 T map 도보 시간 병렬 조회
+    // 모든 출구에 대해 T map 도보 시간 병렬 조회
     const times = await Promise.all(
       exits.map((exit) =>
-        tmapWalkSeconds(
-          parseFloat(exit.x), parseFloat(exit.y),
-          placeLng, placeLat,
-        )
+        tmapWalkSeconds(exit.lng, exit.lat, placeLng, placeLat)
       )
     );
 
-    // 5단계: 도보 시간 기준으로 최솟값 출구 선택
-    //  T map 실패 시 haversine fallback
+    // haversine 거리도 미리 계산 (T map 실패 시 fallback용)
+    const dists = exits.map((exit) =>
+      haversine(placeLat, placeLng, exit.lat, exit.lng)
+    );
+
+    // T map 시간 기준 최솟값, 없으면 haversine fallback
     let bestIdx = 0;
-    let bestSecs = times[0] ?? Infinity;
+    let bestScore = times[0] ?? dists[0];
     for (let i = 1; i < exits.length; i++) {
-      const secs = times[i] ?? Infinity;
-      if (secs < bestSecs) { bestIdx = i; bestSecs = secs; }
+      const score = times[i] ?? (times[0] === null ? dists[i] : Infinity);
+      if (score < bestScore) { bestIdx = i; bestScore = score; }
     }
 
     const best = exits[bestIdx];
-    const distM = Math.round(
-      haversine(placeLat, placeLng, parseFloat(best.y), parseFloat(best.x))
-    );
-
-    // T map 시간이 있으면 사용, 없으면 haversine 추정
-    const walkMinsVal = bestSecs < Infinity
-      ? Math.ceil(bestSecs / 60)
+    const distM = Math.round(dists[bestIdx]);
+    const walkMinsVal = times[bestIdx] != null
+      ? Math.ceil(times[bestIdx]! / 60)
       : calcWalkMins(distM);
 
     return {
-      name: best.place_name,
+      name: `${best.ref}번 출구`,
       distanceM: distM,
       walkMins: walkMinsVal,
     };
@@ -181,8 +146,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "name, station 파라미터 필요" }, { status: 400 });
   }
 
-  // v6: 영업시간 표기법 개선 (todayHours 합산, weeklyHours 점심/저녁 라벨)
-  const cacheKey = `hoursv6:${station}:${name}`;
+  // v7: stationExits 정적 데이터 기반 출구 조회
+  const cacheKey = `hoursv7:${station}:${name}`;
   const cached = await redis.get<PlaceHoursResult>(cacheKey).catch(() => null);
   if (cached) return NextResponse.json(cached);
 
@@ -223,7 +188,7 @@ export async function GET(request: NextRequest) {
       ? { lat: place.location.latitude, lng: place.location.longitude }
       : null;
 
-    // 좌표 있으면 카카오로 가장 가까운 출구 조회 (병렬)
+    // 좌표 있으면 stationExits로 가장 가까운 출구 조회 (병렬)
     const [hours, nearestExit] = await Promise.all([
       Promise.resolve(place.currentOpeningHours ?? place.regularOpeningHours ?? null),
       location ? findNearestExit(location.lat, location.lng, station) : Promise.resolve(null),
@@ -242,8 +207,8 @@ export async function GET(request: NextRequest) {
     const fmtPeriod = (p: Period) =>
       `${fmt(p.open.hour, p.open.minute)} ~ ${p.close ? fmt(p.close.hour, p.close.minute) : "24:00"}`;
 
-    // 타임대 라벨 (시작 시간 기준: ~15시 이전 = 점심, 이후 = 저녁)
-    function periodLabel(p: Period, idx: number, total: number): string {
+    // 타임대 라벨 (시작 시간 기준: 15시 이전 = 점심, 이후 = 저녁)
+    function periodLabel(p: Period, _idx: number, total: number): string {
       if (total === 1) return "";
       if (p.open.hour < 15) return "점심 ";
       return "저녁 ";
