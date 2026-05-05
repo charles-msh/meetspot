@@ -182,6 +182,24 @@ assert("3페이지: 1+2페이지 전부 제거 → 신규 1건만", deduped3.map
 const seenForChinese = getSeenBeforeCurrentPage(cache, "중식", 2);
 assert("중식 필터는 한식 캐시와 독립적 → seen 0건", seenForChinese.size, 0);
 
+// ── 7. 동적 페이지네이션 (빈 페이지 감지) ───────────────────────
+console.log("\n[7] 동적 페이지네이션 - 빈 페이지 감지 시 축소");
+
+function calcEffectiveTotalPages(apiTotal, firstEmpty, MAX_PAGES, ITEMS_PER_PAGE) {
+  const rawTotal = Math.min(MAX_PAGES, Math.max(1, Math.ceil(apiTotal / ITEMS_PER_PAGE)));
+  if (firstEmpty !== undefined) return Math.max(1, firstEmpty - 1);
+  return rawTotal;
+}
+
+// 성신여대역 시나리오: API total=50, 실제 유효 데이터는 2페이지까지
+assert("firstEmpty 미감지 → rawTotalPages=5", calcEffectiveTotalPages(50, undefined, 5, 10), 5);
+assert("3페이지 빈 것 감지 → effectivePages=2", calcEffectiveTotalPages(50, 3, 5, 10), 2);
+assert("2페이지 빈 것 감지 → effectivePages=1 (페이지네이션 숨김)", calcEffectiveTotalPages(50, 2, 5, 10), 1);
+assert("1페이지 빈 것 감지 → effectivePages=1 (최소값)", calcEffectiveTotalPages(50, 1, 5, 10), 1);
+assert("5페이지 빈 것 감지 → effectivePages=4", calcEffectiveTotalPages(50, 5, 5, 10), 4);
+// API total=0 이면 rawTotal=1, firstEmpty 없어도 1페이지
+assert("API total=0, firstEmpty 없음 → 1페이지", calcEffectiveTotalPages(0, undefined, 5, 10), 1);
+
 // ── 결과 요약 ─────────────────────────────────────────────────────
 console.log(`\n${"─".repeat(50)}`);
 console.log(`결과: ${passed}개 통과 / ${failed}개 실패`);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
-import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Props {
   station: RecommendedStation;
@@ -42,12 +42,11 @@ const foodFilters = ["전체", "한식", "일식", "중식", "양식", "패스�
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
 const ITEMS_PER_PAGE = 10;
 const MAX_PAGES = 5;
-const IMAGE_LOAD_TIMEOUT_MS = 4000; // 이미지 로드 최대 대기시간
 
 interface PageEntry { items: PlaceItem[]; total: number; }
 type PageCache = Map<string, Map<number, PageEntry>>;
 
-// ── 스켈레톤 카드 컴포넌트 ───────────────────────────────────────
+// ── 스켈레톤 카드 (API 로딩 중) ─────────────────────────────────
 function SkeletonCard() {
   return (
     <div className="bg-surface border border-border rounded-2xl overflow-hidden">
@@ -64,26 +63,24 @@ function SkeletonCard() {
   );
 }
 
-export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef }: Props) {
+export default function Step4Places({
+  station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef,
+}: Props) {
   const [filter, setFilter] = useState("전체");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageCache, setPageCache] = useState<PageCache>(new Map());
-  const [imagesReady, setImagesReady] = useState(false);
-  const prefetchedRef = useRef<Set<string>>(new Set());
-  const imageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 각 filter별로 "처음 0건이 나온 페이지" 추적 → 페이지네이션 동적 축소
+  const [firstEmptyPageByFilter, setFirstEmptyPageByFilter] = useState<Map<string, number>>(new Map());
 
   const venue = venueLabels[venueType];
   const meetingLabel = meetingTypeLabels[meetingType];
   const showFoodFilter = venueType === "restaurant";
 
   const currentEntry = pageCache.get(filter)?.get(page);
-  const total = currentEntry?.total ?? 0;
-  const totalPages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)));
 
   // ── 크로스-페이지 중복 제거 ──────────────────────────────────
-  // 현재 페이지 이전에 이미 표시된 업체명을 수집
   const seenBeforeCurrentPage = useMemo(() => {
     const seen = new Set<string>();
     const filterCache = pageCache.get(filter);
@@ -99,50 +96,47 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     item => !seenBeforeCurrentPage.has(item.title)
   );
 
-  // ── 이미지 프리로드 → 전부 로드되면 화면 전환 ────────────────
+  // ── 빈 페이지 감지 → firstEmptyPageByFilter 업데이트 ────────
   useEffect(() => {
-    if (loading) return;
-    if (places.length === 0) { setImagesReady(true); return; }
-
-    setImagesReady(false);
-
-    const urls = places.flatMap(p =>
-      p.imageUrls?.length > 0 ? p.imageUrls.slice(0, 3) : [defaultImage]
-    );
-
-    if (urls.length === 0) { setImagesReady(true); return; }
-
-    // 최대 대기시간 타이머 (느린 네트워크 대비)
-    if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
-    imageTimerRef.current = setTimeout(() => setImagesReady(true), IMAGE_LOAD_TIMEOUT_MS);
-
-    let remaining = urls.length;
-    const done = () => {
-      remaining--;
-      if (remaining <= 0) {
-        if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
-        setImagesReady(true);
-      }
-    };
-
-    for (const url of urls) {
-      const img = new window.Image();
-      img.onload = done;
-      img.onerror = done;
-      img.src = url;
+    if (!currentEntry || loading) return;
+    if (places.length === 0) {
+      setFirstEmptyPageByFilter(prev => {
+        const existing = prev.get(filter);
+        if (existing !== undefined && existing <= page) return prev; // 이미 더 앞 페이지가 비어있음
+        const next = new Map(prev);
+        next.set(filter, page);
+        return next;
+      });
+    } else {
+      // 결과 있는 페이지를 확인 → 더 뒤에 있던 firstEmpty 기록이 있으면 제거
+      setFirstEmptyPageByFilter(prev => {
+        const existing = prev.get(filter);
+        if (existing !== undefined && existing <= page) {
+          const next = new Map(prev);
+          next.delete(filter);
+          return next;
+        }
+        return prev;
+      });
     }
+  }, [currentEntry, places.length, filter, page, loading]);
 
-    return () => {
-      if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, page, filter]);
+  // ── 동적 페이지 수 계산 ──────────────────────────────────────
+  const apiTotal = currentEntry?.total ?? 0;
+  const rawTotalPages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(apiTotal / ITEMS_PER_PAGE)));
+  const firstEmpty = firstEmptyPageByFilter.get(filter);
+  // 빈 페이지가 감지되면 그 직전까지만 표시; 아직 미탐색 구간은 rawTotalPages 기준
+  const totalPages = firstEmpty !== undefined
+    ? Math.max(1, firstEmpty - 1)
+    : rawTotalPages;
 
   const buildQuery = useCallback((foodFilter: string) => {
     const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
     const filterPart = foodFilter !== "전체" ? ` ${foodFilter}` : "";
     return `${station.name}역 ${keyword}${filterPart}`;
   }, [station.name, meetingType, venueType]);
+
+  const prefetchedRef = useRef<Set<string>>(new Set());
 
   const fetchPage = useCallback(async (f: string, p: number): Promise<boolean> => {
     const key = `${f}:${p}`;
@@ -166,13 +160,12 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     }
   }, [buildQuery]);
 
-  // 마운트: 전체 1페이지 → 나머지 필터 1페이지 백그라운드 프리패치
   useEffect(() => {
     let cancelled = false;
     setFilter("전체");
     setPage(1);
     setPageCache(new Map());
-    setImagesReady(false);
+    setFirstEmptyPageByFilter(new Map());
     prefetchedRef.current = new Set();
 
     async function init() {
@@ -197,7 +190,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   async function goToPage(p: number) {
     if (p < 1 || p > totalPages || p === page) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-    setImagesReady(false);
     setPage(p);
     if (!prefetchedRef.current.has(`${filter}:${p}`)) {
       setLoading(true);
@@ -209,7 +201,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   async function handleFilterClick(f: string) {
     if (f === filter) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-    setImagesReady(false);
     setFilter(f);
     setPage(1);
     if (!prefetchedRef.current.has(`${f}:1`)) {
@@ -225,9 +216,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
     return [page - 2, page - 1, page, page + 1, page + 2];
   }
-
-  // 로딩 중이거나 이미지 아직 준비 안 됨 → 스켈레톤 표시
-  const showSkeleton = loading || (!imagesReady && !error);
 
   return (
     <div className="space-y-4">
@@ -262,7 +250,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
       {/* 장소 리스트 */}
       <div className="space-y-2">
-        {error ? (
+        {loading ? (
+          <>{[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}</>
+        ) : error ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-sm">{error}</p>
             <button
@@ -272,11 +262,6 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               다시 시도
             </button>
           </div>
-        ) : showSkeleton ? (
-          /* 스켈레톤 카드: 데이터 로딩 중 또는 이미지 프리로드 중 */
-          <>
-            {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
-          </>
         ) : places.length === 0 ? (
           <div className="text-center py-8 text-text-muted text-sm">
             <Search className="w-4 h-4 mx-auto mb-2" />
@@ -317,14 +302,29 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
                 </div>
               </div>
 
+              {/* 이미지: 개별 스켈레톤 → 로드 완료 시 페이드인 */}
               <div className="flex gap-1 overflow-x-auto scrollbar-hide px-4 pb-3">
                 {(place.imageUrls?.length > 0 ? place.imageUrls : [defaultImage]).map((url, j) => (
-                  <div key={j} className="shrink-0 w-[120px] h-[120px] overflow-hidden bg-gray-100">
+                  <div
+                    key={j}
+                    className="shrink-0 w-[120px] h-[120px] bg-gray-200 animate-pulse overflow-hidden"
+                  >
                     <img
                       src={url}
                       alt={`${place.title} ${j + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).src = defaultImage; }}
+                      className="w-full h-full object-cover transition-opacity duration-300"
+                      style={{ opacity: 0 }}
+                      onLoad={(e) => {
+                        const el = e.target as HTMLImageElement;
+                        el.style.opacity = "1";
+                        el.parentElement?.classList.remove("animate-pulse", "bg-gray-200");
+                      }}
+                      onError={(e) => {
+                        const el = e.target as HTMLImageElement;
+                        if (el.src !== defaultImage) { el.src = defaultImage; return; }
+                        el.style.opacity = "1";
+                        el.parentElement?.classList.remove("animate-pulse", "bg-gray-200");
+                      }}
                     />
                   </div>
                 ))}
@@ -334,8 +334,8 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
         )}
       </div>
 
-      {/* 페이지네이션 */}
-      {!showSkeleton && places.length > 0 && totalPages > 1 && (
+      {/* 페이지네이션: 실제 결과 기반으로 동적 표시 */}
+      {!loading && places.length > 0 && totalPages > 1 && (
         <div className="flex items-center justify-center gap-1 py-2">
           <button
             onClick={() => goToPage(page - 1)}
