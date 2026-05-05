@@ -4,7 +4,7 @@ import { Redis } from "@upstash/redis";
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
 const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID!;
 const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET!;
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!; // Vision API 전용
 
 interface KakaoDocument {
   place_name: string;
@@ -17,24 +17,21 @@ interface KakaoDocument {
 
 const redis = Redis.fromEnv();
 
-// ── Google API 월별 호출 제한 (무료 한도 95% 선에서 차단) ──
-const LIMITS = {
-  places: 950,  // Places API 무료 한도 1,000건
-  vision: 950,  // Vision API 무료 한도 1,000건
-};
+// ── Vision API 월별 호출 제한 (무료 한도 95% 선에서 차단) ──
+const VISION_LIMIT = 950; // Vision API 무료 한도 1,000건
 
-function monthKey(api: "places" | "vision") {
+function monthKey() {
   const now = new Date();
-  return `quota:${api}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return `quota:vision:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-async function checkAndIncrement(api: "places" | "vision"): Promise<boolean> {
+async function checkAndIncrementVision(): Promise<boolean> {
   try {
-    const key = monthKey(api);
+    const key = monthKey();
     const count = await redis.incr(key);
     // 처음 생성 시 만료일 월말로 설정 (32일이면 다음 달 확실히 넘김)
     if (count === 1) await redis.expire(key, 60 * 60 * 24 * 32);
-    return count <= LIMITS[api];
+    return count <= VISION_LIMIT;
   } catch {
     return true; // Redis 오류 시 일단 허용
   }
@@ -180,8 +177,8 @@ function getCategoryImageKeyword(category: string): string {
 async function filterFoodImages(imageUrls: string[], category: string = ""): Promise<string[]> {
   if (imageUrls.length === 0) return [];
 
-  // 월별 한도 초과 시 Vision API 스킵 → 원본 최대 6장 반환
-  const allowed = await checkAndIncrement("vision");
+  // 월별 한도 초과 시 Vision API 스킵 → CDN URL 최대 6장 반환
+  const allowed = await checkAndIncrementVision();
   if (!allowed) {
     console.warn("[Vision API] 월 한도 초과 - fallback");
     return imageUrls.slice(0, 6);
@@ -272,40 +269,6 @@ async function filterFoodImages(imageUrls: string[], category: string = ""): Pro
   }
 }
 
-// Google Places API (New) - 업체명+역이름으로 검색 → 사진 1장 URL 반환
-async function getGooglePhotoUrl(placeName: string, stationName: string): Promise<string> {
-  // 월별 한도 초과 시 Places API 스킵
-  const allowed = await checkAndIncrement("places");
-  if (!allowed) {
-    console.warn("[Places API] 월 한도 초과 - fallback");
-    return "";
-  }
-
-  try {
-    const query = `${placeName} ${stationName}역`;
-    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-        "X-Goog-FieldMask": "places.photos",
-      },
-      body: JSON.stringify({ textQuery: query, languageCode: "ko", maxResultCount: 1 }),
-    });
-    if (!res.ok) return "";
-    const data = await res.json();
-    const photoName = data.places?.[0]?.photos?.[0]?.name;
-    if (!photoName) return "";
-
-    const photoRes = await fetch(
-      `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=600&key=${GOOGLE_PLACES_API_KEY}`
-    );
-    if (!photoRes.ok) return "";
-    return photoRes.url;
-  } catch {
-    return "";
-  }
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -371,8 +334,8 @@ export async function GET(request: NextRequest) {
         // 카카오는 plain text 반환 (Naver와 달리 HTML 태그 없음)
         const name = item.title;
 
-        // Redis 캐시 확인 (TTL 7일 / v3: 원본 URL 저장으로 캐시 무효화)
-        const cacheKey = `v3:img:${stationName}:${name}`;
+        // Redis 캐시 확인 (TTL 7일 / v4: CDN URL 저장으로 hotlink 문제 해결)
+        const cacheKey = `v4:img:${stationName}:${name}`;
         const cached = await redis.get<string[]>(cacheKey).catch(() => null);
         if (cached) {
           return {
@@ -412,26 +375,15 @@ export async function GET(request: NextRequest) {
             .filter(Boolean);
 
           // Layer 2: 카테고리 부스트 가중치 Vision 필터링
-          const filtered = await filterFoodImages(naverUrls, item.category);
-
-          // 저장/표시용은 원본 URL 추출 (CDN URL의 src 파라미터)
-          // 네이버 CDN: https://search.pstatic.net/common/?src=원본URL&type=w600
-          imageUrls = filtered.map((cdnUrl) => {
-            try {
-              const u = new URL(cdnUrl);
-              if (u.hostname === "search.pstatic.net") {
-                const src = u.searchParams.get("src");
-                if (src) return src; // 원본 URL 반환
-              }
-            } catch { /* URL 파싱 실패 시 CDN URL 그대로 사용 */ }
-            return cdnUrl;
-          });
+          // 네이버 CDN URL(search.pstatic.net)을 그대로 저장 — 원본 URL은 hotlink 차단으로 브라우저에서 대부분 실패
+          imageUrls = await filterFoodImages(naverUrls, item.category);
         }
 
-        // Redis에 7일 캐시 저장 (30일은 오래된 잘못된 이미지가 계속 노출되는 문제 있었음)
-        if (imageUrls.length > 0) {
-          await redis.set(cacheKey, imageUrls, { ex: 60 * 60 * 24 * 7 }).catch(() => null);
-        }
+        // Redis 캐시 저장
+        // - 이미지 있음: 7일 TTL
+        // - 이미지 없음: 1시간 TTL (Vision API 중복 소모 방지, 짧게 재시도)
+        const ttl = imageUrls.length > 0 ? 60 * 60 * 24 * 7 : 60 * 60;
+        await redis.set(cacheKey, imageUrls, { ex: ttl }).catch(() => null);
 
         return {
           title: name,
@@ -445,15 +397,12 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // 현재 API 사용량 조회 (모니터링용)
-    const [placesCount, visionCount] = await Promise.all([
-      redis.get<number>(monthKey("places")).catch(() => 0),
-      redis.get<number>(monthKey("vision")).catch(() => 0),
-    ]);
+    // 현재 Vision API 사용량 조회 (모니터링용)
+    const visionCount = await redis.get<number>(monthKey()).catch(() => 0);
 
     return NextResponse.json({
       items: placesWithImages, hasMore, total,
-      _quota: { places: placesCount ?? 0, vision: visionCount ?? 0, limits: LIMITS },
+      _quota: { vision: visionCount ?? 0, limit: VISION_LIMIT },
     });
   } catch {
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
