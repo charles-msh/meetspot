@@ -137,39 +137,79 @@ export default function Step4Places({
   }, [station.name, meetingType, venueType]);
 
   const prefetchedRef = useRef<Set<string>>(new Set());
+  // imgPreloadedRef: 브라우저 캐시에 이미지까지 적재 완료된 페이지 추적
+  const imgPreloadedRef = useRef<Set<string>>(new Set());
+  // pageCacheRef: async 함수 안에서 최신 pageCache에 접근하기 위한 동기 미러
+  const pageCacheRef = useRef<PageCache>(new Map());
+  useEffect(() => { pageCacheRef.current = pageCache; }, [pageCache]);
 
-  const fetchPage = useCallback(async (f: string, p: number): Promise<boolean> => {
+  // ── fetchPage: API 데이터 가져오기, items 반환 ───────────────
+  const fetchPage = useCallback(async (f: string, p: number): Promise<PlaceItem[]> => {
     const key = `${f}:${p}`;
-    if (prefetchedRef.current.has(key)) return true;
+    if (prefetchedRef.current.has(key)) {
+      return pageCacheRef.current.get(f)?.get(p)?.items ?? [];
+    }
     prefetchedRef.current.add(key);
     try {
-      // 카카오 API는 page 파라미터 사용 (1-based)
       const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&page=${p}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
+      const items: PlaceItem[] = data.items || [];
       setPageCache(prev => {
         const next = new Map(prev);
         if (!next.has(f)) next.set(f, new Map());
-        next.get(f)!.set(p, { items: data.items || [], total: data.total ?? 0 });
+        next.get(f)!.set(p, { items, total: data.total ?? 0 });
         return next;
       });
-      return true;
+      return items;
     } catch {
       prefetchedRef.current.delete(key);
-      return false;
+      return [];
     }
   }, [buildQuery]);
 
-  // ── 다음 페이지 프리페치 (백그라운드, 스켈레톤 없음) ──────────
-  // 현재 페이지 데이터가 준비되면 다음 페이지를 조용히 미리 받아둠
-  // → 페이지 이동 시 이미 캐시에 있어 스켈레톤 없이 즉시 표시
+  // ── preloadPageImages: 이미지를 브라우저 캐시에 미리 적재 ────
+  // 업체당 앞 3장만 적재 (뒤 이미지는 사용자가 스크롤할 때 자연 로드)
+  // 최대 4초 대기 후 타임아웃 (네트워크 느린 환경 대비)
+  const preloadPageImages = useCallback(async (f: string, p: number, items: PlaceItem[]) => {
+    const key = `imgs:${f}:${p}`;
+    if (imgPreloadedRef.current.has(key)) return;
+    const urls = items.flatMap(item =>
+      (item.imageUrls?.length > 0 ? item.imageUrls : [defaultImage]).slice(0, 3)
+    );
+    if (urls.length === 0) { imgPreloadedRef.current.add(key); return; }
+    await Promise.race([
+      Promise.all(urls.map(url => new Promise<void>(resolve => {
+        const img = new window.Image();
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = url;
+      }))),
+      new Promise<void>(resolve => setTimeout(resolve, 4000)),
+    ]);
+    imgPreloadedRef.current.add(key);
+  }, []);
+
+  // ── 다음 페이지 프리페치 + 이미지 프리로드 (백그라운드) ──────
+  // 현재 페이지 표시 중에 다음 페이지 API 데이터 + 이미지를 모두 준비
+  // → 페이지 이동 클릭 시 브릿지 없이 즉시 전환
   useEffect(() => {
     if (!currentEntry || loading) return;
     const nextPage = page + 1;
-    if (nextPage <= rawTotalPages && !prefetchedRef.current.has(`${filter}:${nextPage}`)) {
-      fetchPage(filter, nextPage); // loading 상태 변경 없이 백그라운드 실행
+    if (nextPage > rawTotalPages) return;
+    const apiKey = `${filter}:${nextPage}`;
+    const imgKey = `imgs:${filter}:${nextPage}`;
+    if (!prefetchedRef.current.has(apiKey)) {
+      // API 먼저 → 완료되면 이미지 프리로드
+      fetchPage(filter, nextPage).then(items => {
+        if (items.length > 0) preloadPageImages(filter, nextPage, items);
+      });
+    } else if (!imgPreloadedRef.current.has(imgKey)) {
+      // API는 이미 있는데 이미지만 안 된 경우
+      const items = pageCacheRef.current.get(filter)?.get(nextPage)?.items ?? [];
+      if (items.length > 0) preloadPageImages(filter, nextPage, items);
     }
-  }, [currentEntry, loading, filter, page, rawTotalPages, fetchPage]);
+  }, [currentEntry, loading, filter, page, rawTotalPages, fetchPage, preloadPageImages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,12 +218,15 @@ export default function Step4Places({
     setPageCache(new Map());
     setFirstEmptyPageByFilter(new Map());
     prefetchedRef.current = new Set();
+    imgPreloadedRef.current = new Set();
 
     async function init() {
       setLoading(true);
       setError("");
-      const ok = await fetchPage("전체", 1);
-      if (!ok) setError("장소를 불러오지 못했습니다");
+      const items = await fetchPage("전체", 1);
+      if (items.length === 0 && !prefetchedRef.current.has("전체:1")) {
+        setError("장소를 불러오지 못했습니다");
+      }
       setLoading(false);
 
       if (!showFoodFilter || cancelled) return;
@@ -201,25 +244,35 @@ export default function Step4Places({
   async function goToPage(p: number) {
     if (p < 1 || p > totalPages || p === page) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-    setPage(p);
-    // 이미 프리페치된 페이지면 loading 없이 즉시 전환
-    if (!prefetchedRef.current.has(`${filter}:${p}`)) {
+
+    const apiReady = prefetchedRef.current.has(`${filter}:${p}`);
+    const imgsReady = imgPreloadedRef.current.has(`imgs:${filter}:${p}`);
+
+    // API 또는 이미지가 아직 준비 안 됐으면 브릿지(스켈레톤) 표시 후 대기
+    if (!apiReady || !imgsReady) {
       setLoading(true);
-      await fetchPage(filter, p);
+      const items = await fetchPage(filter, p);
+      const toPreload = items.length > 0
+        ? items
+        : pageCacheRef.current.get(filter)?.get(p)?.items ?? [];
+      await preloadPageImages(filter, p, toPreload);
       setLoading(false);
     }
+
+    // API + 이미지 모두 준비된 후에 페이지 전환 → 이미지 즉시 표시
+    setPage(p);
   }
 
   async function handleFilterClick(f: string) {
     if (f === filter) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-    setFilter(f);
-    setPage(1);
     if (!prefetchedRef.current.has(`${f}:1`)) {
       setLoading(true);
       await fetchPage(f, 1);
       setLoading(false);
     }
+    setFilter(f);
+    setPage(1);
   }
 
   function getPageNumbers(): number[] {
