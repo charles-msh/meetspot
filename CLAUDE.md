@@ -27,14 +27,26 @@
 - [x] 지하철 노선 색상을 실제 공식 HEX 코드로 교체 (수도권/부산/대구/광주/대전)
 - [x] dev 브랜치 고정 URL 확인 (자동 생성됨)
 
-## 완료된 UI/UX 개선 (오늘)
-- [x] 역 선택 완료 피드백 (체크 아이콘 + 초록 테두리)
-- [x] 소요시간 맥락 표시 ("최단 X분 · 최장 Y분")
-- [x] 역 검색 결과 없음 안내
-- [x] "처음부터 다시" 버튼 약화 (텍스트 링크로)
-- [x] 필터 스크롤 힌트 (페이드 아웃)
+## 최근 완료 작업 (2025-05-06)
+
+### 브릿지 오버레이 실시간 진행률 UI (커밋: 7a8790b)
+- Step3(추천역) → Step4(장소목록) 전환 시 로딩 오버레이를 step2→step3와 동일한 패턴으로 개선
+- prefetchingPlaces 상태 제거 → bridgeProgress { phase, current, total } 상태로 교체
+- API 단계(0→60%): 필터별 완료 시마다 진행률 업데이트, UtensilsCrossed 아이콘
+- 이미지 단계(60→100%): 이미지 로드 완료 시마다 진행률 업데이트, ImageIcon 아이콘
+- src/app/page.tsx 수정
+
+### 이미지 기본 이미지 노출 버그 수정 (커밋: 52da6c0)
+- **근본 원인**: Vision API 쿼터 1170/950 초과 → fallback → 원본 URL hotlink 차단 → 이미지 실패
+- **조치 1**: Redis에서 `quota:vision:2026-05` 키 삭제(리셋) → Vision API 재활성화
+- **조치 2**: 이미지 URL 저장 방식 변경: 원본 URL 추출 제거 → 네이버 CDN URL 그대로 저장
+- **조치 3**: 이미지 없는 업체도 1시간 TTL 캐시 저장 → Vision API 중복 소모 방지
+- **조치 4**: 캐시 키 v3 → v4 (기존 잘못된 원본 URL 캐시 자동 무효화)
+- **조치 5**: getGooglePhotoUrl dead code 제거, Places API quota 로직 제거
+- src/app/api/search/route.ts 수정
 
 ## 다음 작업 (미완료)
+- [ ] dev에서 이미지 정상 노출 확인 후 main merge (운영 배포)
 - [ ] 전국 역 데이터 통합
   - 현재: src/data/stations.ts에 수도권 약 100개 역만 하드코딩
   - 목표: 전국 모든 역 검색 가능하게 (길음역 등 누락된 역 포함)
@@ -48,11 +60,15 @@
 - src/components/StationSearch.tsx → 역 검색 컴포넌트 (로컬 검색)
 - src/components/steps/Step3Result.tsx → 추천역 결과 + 소요시간
 - src/app/api/transit/route.ts → ODsay API + Upstash 캐시 + Referer 헤더
-- src/app/api/search/route.ts → Naver 장소 검색
+- src/app/api/search/route.ts → 카카오 장소 검색 + Naver 이미지 + Vision API 필터링
 - src/lib/lineColors.tsx → 노선 컬러 배지 공용 유틸 (공식 HEX 색상)
 - src/lib/midpoint.ts → 중간 지점 계산 로직
+- src/app/page.tsx → 전체 스텝 흐름 + 브릿지 오버레이
 
 ## 기술 메모
 - ODsay API는 Referer 헤더로 도메인 인증함 → 서버에서 호출 시 반드시 Referer 추가 필요
 - KRIC stationInfo API는 역명 검색 불가, 역코드 3개(railOprIsttCd+lnCd+stinCd) 조합 필요
 - Tailwind에서 동적 HEX 색상은 bg-[#HEX] 형식 사용
+- 이미지 캐시 키: v4:img:{역명}:{업체명} (v4 = CDN URL 저장 버전)
+- Vision API 쿼터: quota:vision:YYYY-MM (Redis, 월 950건 한도)
+- 네이버 CDN URL(search.pstatic.net)은 브라우저에서 직접 접근 가능, 외부 원본 URL은 hotlink 차단 많음
