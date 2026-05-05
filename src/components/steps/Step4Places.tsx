@@ -160,6 +160,17 @@ export default function Step4Places({
     }
   }, [buildQuery]);
 
+  // ── 다음 페이지 프리페치 (백그라운드, 스켈레톤 없음) ──────────
+  // 현재 페이지 데이터가 준비되면 다음 페이지를 조용히 미리 받아둠
+  // → 페이지 이동 시 이미 캐시에 있어 스켈레톤 없이 즉시 표시
+  useEffect(() => {
+    if (!currentEntry || loading) return;
+    const nextPage = page + 1;
+    if (nextPage <= rawTotalPages && !prefetchedRef.current.has(`${filter}:${nextPage}`)) {
+      fetchPage(filter, nextPage); // loading 상태 변경 없이 백그라운드 실행
+    }
+  }, [currentEntry, loading, filter, page, rawTotalPages, fetchPage]);
+
   useEffect(() => {
     let cancelled = false;
     setFilter("전체");
@@ -191,6 +202,7 @@ export default function Step4Places({
     if (p < 1 || p > totalPages || p === page) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
     setPage(p);
+    // 이미 프리페치된 페이지면 loading 없이 즉시 전환
     if (!prefetchedRef.current.has(`${filter}:${p}`)) {
       setLoading(true);
       await fetchPage(filter, p);
