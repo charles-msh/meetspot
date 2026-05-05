@@ -185,6 +185,76 @@ assert("1페이지 빈 것 감지 → effectivePages=1 (최소값)", calcEffecti
 // API total=0 이면 rawTotal=1, firstEmpty 없어도 1페이지
 assert("API total=0, firstEmpty 없음 → 1페이지", calcEffectiveTotalPages(0, undefined, 5, 15), 1);
 
+// ── 8. 브릿지 프리페치 로직 ─────────────────────────────────────
+console.log("\n[8] 브릿지 프리페치 (Step3→Step4 전환)");
+
+const MEETING_KEYWORDS = {
+  date:     { restaurant: "데이트 맛집", bar: "분위기 좋은 바",      cafe: "감성 카페" },
+  friends:  { restaurant: "맛집",        bar: "술집",                cafe: "카페" },
+  work:     { restaurant: "회식 맛집",   bar: "회식 술집",           cafe: "카페" },
+  club:     { restaurant: "모임 맛집",   bar: "단체 술집",           cafe: "단체 카페" },
+  business: { restaurant: "비즈니스 레스토랑", bar: "분위기 좋은 바", cafe: "조용한 카페" },
+  family:   { restaurant: "가족 맛집",   bar: "와인바",              cafe: "카페" },
+};
+const BRIDGE_FOOD_FILTERS = ["전체", "한식", "일식", "중식", "양식", "패스트푸드"];
+
+function getBridgeFilters(venueType) {
+  return venueType === "restaurant" ? BRIDGE_FOOD_FILTERS : ["전체"];
+}
+function buildBridgeQuery(stationName, meetingType, venueType, filter) {
+  const keyword = MEETING_KEYWORDS[meetingType]?.[venueType] ?? "맛집";
+  const filterPart = filter !== "전체" ? ` ${filter}` : "";
+  return `${stationName}역 ${keyword}${filterPart}`;
+}
+
+// 필터 목록 결정
+assert("restaurant → 6개 필터", getBridgeFilters("restaurant").length, 6);
+assert("bar → 전체만", getBridgeFilters("bar"), ["전체"]);
+assert("cafe → 전체만", getBridgeFilters("cafe"), ["전체"]);
+
+// 쿼리 빌드
+assert("강남 데이트 맛집 전체", buildBridgeQuery("강남", "date", "restaurant", "전체"), "강남역 데이트 맛집");
+assert("강남 데이트 맛집 한식", buildBridgeQuery("강남", "date", "restaurant", "한식"), "강남역 데이트 맛집 한식");
+assert("강남 친구 바 전체",     buildBridgeQuery("강남", "friends", "bar", "전체"),      "강남역 술집");
+assert("강남 회식 카페 전체",   buildBridgeQuery("강남", "work", "cafe", "전체"),        "강남역 카페");
+
+// initialData로 pageCache 구성
+function buildCacheFromInitialData(initialData) {
+  const cache = new Map();
+  const prefetched = new Set();
+  const imgPreloaded = new Set();
+  for (const [f, data] of initialData) {
+    cache.set(f, new Map([[1, data]]));
+    prefetched.add(`${f}:1`);
+    imgPreloaded.add(`imgs:${f}:1`);
+  }
+  return { cache, prefetched, imgPreloaded };
+}
+
+const mockInitialData = new Map([
+  ["전체", { items: [{ title: "맛집A" }, { title: "맛집B" }], total: 30 }],
+  ["한식", { items: [{ title: "한식당A" }], total: 15 }],
+]);
+const { cache: initCache, prefetched: initPrefetched, imgPreloaded: initImgPreloaded } = buildCacheFromInitialData(mockInitialData);
+
+assert("cache에 전체 filter 있음", initCache.has("전체"), true);
+assert("cache에 한식 filter 있음", initCache.has("한식"), true);
+assert("전체 1페이지 items 2건", initCache.get("전체").get(1).items.length, 2);
+assert("prefetched에 전체:1 있음", initPrefetched.has("전체:1"), true);
+assert("prefetched에 한식:1 있음", initPrefetched.has("한식:1"), true);
+assert("imgPreloaded에 imgs:전체:1 있음", initImgPreloaded.has("imgs:전체:1"), true);
+assert("imgPreloaded에 imgs:한식:1 있음", initImgPreloaded.has("imgs:한식:1"), true);
+
+// 타임아웃 처리: 부분 데이터로도 동작해야 함
+const partialInitialData = new Map([
+  ["전체", { items: [{ title: "맛집A" }], total: 15 }],
+  // 한식 타임아웃으로 null → 제외됨
+]);
+const { cache: partialCache, prefetched: partialPrefetched } = buildCacheFromInitialData(partialInitialData);
+assert("타임아웃 시 전체 filter만 있음", partialCache.size, 1);
+assert("타임아웃 시 전체:1만 prefetched", partialPrefetched.has("전체:1"), true);
+assert("타임아웃 시 한식:1 없음", partialPrefetched.has("한식:1"), false);
+
 // ── 결과 요약 ─────────────────────────────────────────────────────
 console.log(`\n${"─".repeat(50)}`);
 console.log(`결과: ${passed}개 통과 / ${failed}개 실패`);

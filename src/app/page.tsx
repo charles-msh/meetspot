@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { MeetingInfo, Participant, RecommendedStation, PlaceItem } from "@/lib/types";
+import type { MeetingInfo, Participant, RecommendedStation, PlaceItem, Step4InitialData } from "@/lib/types";
+import type { MeetingType, VenueType } from "@/lib/types";
 import { findStation } from "@/data/stations";
 import { findBestStations } from "@/lib/midpoint";
 import Step1MeetingType from "@/components/steps/Step1MeetingType";
@@ -9,10 +10,21 @@ import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
 import Step5PlaceDetail from "@/components/steps/Step5PlaceDetail";
-import { MapPin, ChevronLeft, Train, Users, Star } from "lucide-react";
+import { MapPin, ChevronLeft, Train, Users, Star, UtensilsCrossed } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "장소 목록", "상세 보기"];
+
+// Step4Places와 동일한 키워드 테이블 (브릿지 프리페치용)
+const MEETING_KEYWORDS: Record<MeetingType, Record<VenueType, string>> = {
+  date:     { restaurant: "데이트 맛집", bar: "분위기 좋은 바",     cafe: "감성 카페" },
+  friends:  { restaurant: "맛집",        bar: "술집",               cafe: "카페" },
+  work:     { restaurant: "회식 맛집",   bar: "회식 술집",          cafe: "카페" },
+  club:     { restaurant: "모임 맛집",   bar: "단체 술집",          cafe: "단체 카페" },
+  business: { restaurant: "비즈니스 레스토랑", bar: "분위기 좋은 바", cafe: "조용한 카페" },
+  family:   { restaurant: "가족 맛집",   bar: "와인바",             cafe: "카페" },
+};
+const FOOD_FILTERS = ["전체", "한식", "일식", "중식", "양식", "패스트푸드"];
 
 function getLoadingMessage(pct: number): { main: string; sub: string } {
   if (pct === 0)  return { main: "중간 지점 후보를 뽑고 있어요", sub: "잠시만 기다려 주세요" };
@@ -42,6 +54,8 @@ export default function Home() {
   const [selectedPlace, setSelectedPlace] = useState<PlaceItem | null>(null);
   const [computing, setComputing] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [prefetchingPlaces, setPrefetchingPlaces] = useState(false);
+  const [step4InitialData, setStep4InitialData] = useState<Step4InitialData | null>(null);
 
   function handleFindMidpoint() {
     const stationData = participants
@@ -63,8 +77,60 @@ export default function Home() {
     setStep((prev) => (prev === 1 ? 2 : prev));
   }
 
-  function handleSelectStation(station: RecommendedStation) {
+  async function handleSelectStation(station: RecommendedStation) {
     setSelectedStation(station);
+    setPrefetchingPlaces(true);
+
+    // 브릿지: 모든 필터의 1페이지 데이터를 병렬로 미리 가져옴
+    const keyword = MEETING_KEYWORDS[meetingInfo.meetingType]?.[meetingInfo.venueType] ?? "맛집";
+    const isRestaurant = meetingInfo.venueType === "restaurant";
+    const filters = isRestaurant ? FOOD_FILTERS : ["전체"];
+
+    const buildQuery = (f: string) => {
+      const filterPart = f !== "전체" ? ` ${f}` : "";
+      return `${station.name}역 ${keyword}${filterPart}`;
+    };
+
+    // API 병렬 호출 (최대 10초)
+    const apiResults = await Promise.race([
+      Promise.all(
+        filters.map(async (f) => {
+          try {
+            const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&page=1`);
+            if (!res.ok) return [f, null] as const;
+            const data = await res.json();
+            return [f, { items: (data.items || []) as PlaceItem[], total: (data.total ?? 0) as number }] as const;
+          } catch {
+            return [f, null] as const;
+          }
+        })
+      ),
+      new Promise<typeof filters extends string[] ? [string, null][] : never>((resolve) =>
+        setTimeout(() => resolve(filters.map(f => [f, null] as const) as [string, null][]), 10_000)
+      ),
+    ]);
+
+    const initialData: Step4InitialData = new Map(
+      apiResults.filter(([, v]) => v !== null) as [string, { items: PlaceItem[]; total: number }][]
+    );
+
+    // 이미지 브라우저 캐시 적재 (업체당 앞 3장, 최대 5초)
+    const allItems = [...initialData.values()].flatMap(d => d.items);
+    const allUrls = allItems.flatMap(item => (item.imageUrls ?? []).slice(0, 3));
+    if (allUrls.length > 0) {
+      await Promise.race([
+        Promise.all(allUrls.map(url => new Promise<void>(resolve => {
+          const img = new Image();
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          img.src = url;
+        }))),
+        new Promise<void>(resolve => setTimeout(resolve, 5_000)),
+      ]);
+    }
+
+    setStep4InitialData(initialData);
+    setPrefetchingPlaces(false);
     setStep(3);
   }
 
@@ -121,6 +187,22 @@ export default function Home() {
             </div>
             <p className="text-right text-xs font-medium text-text-muted">{progressPct}%</p>
           </div>
+        </div>
+      )}
+
+      {/* ── 장소 목록 브릿지 오버레이 ── */}
+      {prefetchingPlaces && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-8">
+          <div className="w-14 h-14 rounded-2xl bg-[#111] flex items-center justify-center mb-8">
+            <UtensilsCrossed className="w-7 h-7 text-white" />
+          </div>
+          <p className="text-[17px] font-bold text-foreground text-center leading-snug mb-1">
+            장소 정보를 불러오고 있어요
+          </p>
+          <p className="text-sm text-text-muted text-center mb-10">
+            잠시만 기다려 주세요
+          </p>
+          <div className="w-8 h-8 border-2 border-[#111] border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
@@ -217,6 +299,7 @@ export default function Home() {
             onRestart={handleRestart}
             onSelectPlace={handleSelectPlace}
             scrollRef={mainRef}
+            initialData={step4InitialData ?? undefined}
           />
         )}
         {step === 4 && selectedPlace && selectedStation && (

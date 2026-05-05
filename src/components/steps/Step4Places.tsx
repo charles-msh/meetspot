@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
+import type { RecommendedStation, VenueType, MeetingType, PlaceItem, Step4InitialData } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   onRestart: () => void;
   onSelectPlace: (place: PlaceItem) => void;
   scrollRef?: React.RefObject<HTMLElement | null>;
+  // 브릿지에서 미리 가져온 데이터 — 있으면 스켈레톤 없이 즉시 표시
+  initialData?: Step4InitialData;
 }
 
 const venueLabels: Record<VenueType, { label: string; icon: React.ReactNode }> = {
@@ -64,7 +66,7 @@ function SkeletonCard() {
 }
 
 export default function Step4Places({
-  station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef,
+  station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef, initialData,
 }: Props) {
   const [filter, setFilter] = useState("전체");
   const [page, setPage] = useState(1);
@@ -220,6 +222,20 @@ export default function Step4Places({
     prefetchedRef.current = new Set();
     imgPreloadedRef.current = new Set();
 
+    // 브릿지에서 미리 가져온 데이터가 있으면 → 즉시 캐시 적재, 스켈레톤 생략
+    if (initialData && initialData.size > 0) {
+      const cache = new Map<string, Map<number, PageEntry>>();
+      for (const [f, data] of initialData) {
+        cache.set(f, new Map([[1, data]]));
+        prefetchedRef.current.add(`${f}:1`);
+        imgPreloadedRef.current.add(`imgs:${f}:1`); // 브릿지에서 이미 프리로드 완료
+      }
+      setPageCache(cache);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    // initialData 없음 (직접 접근 등) → 기존 방식으로 로딩
     async function init() {
       setLoading(true);
       setError("");

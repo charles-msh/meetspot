@@ -39,3 +39,7 @@ export interface PlaceItem {
   telephone: string;
   imageUrls: string[];
 }
+
+// Step3 → Step4 전환 시 브릿지에서 미리 가져온 데이터
+// key: 필터명("전체" | "한식" | ...), value: 1페이지 결과
+export type Step4InitialData = Map<string, { items: PlaceItem[]; total: number }>;
