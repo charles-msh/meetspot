@@ -10,7 +10,7 @@ import Step2Location from "@/components/steps/Step2Location";
 import Step3Result from "@/components/steps/Step3Result";
 import Step4Places from "@/components/steps/Step4Places";
 import Step5PlaceDetail from "@/components/steps/Step5PlaceDetail";
-import { MapPin, ChevronLeft, Train, Users, Star, UtensilsCrossed } from "lucide-react";
+import { MapPin, ChevronLeft, Train, Users, Star, UtensilsCrossed, ImageIcon } from "lucide-react";
 import { displayName } from "@/data/stations";
 
 const stepLabels = ["약속 유형", "위치 입력", "추천 장소", "장소 목록", "상세 보기"];
@@ -34,6 +34,15 @@ function getLoadingMessage(pct: number): { main: string; sub: string } {
   return           { main: "결과를 정리하고 있어요", sub: "곧 추천 장소가 나타납니다" };
 }
 
+// 브릿지 오버레이 메시지 (전체 진행률 기준)
+function getBridgeLoadingMessage(pct: number): { main: string; sub: string } {
+  if (pct <  10) return { main: "장소 목록을 가져오고 있어요",   sub: "잠시만 기다려 주세요" };
+  if (pct <  60) return { main: "주변 맛집을 찾고 있어요",       sub: "음식 종류별로 검색하고 있어요" };
+  if (pct <  80) return { main: "업체 사진을 불러오고 있어요",   sub: "사진을 미리 받아두고 있어요" };
+  if (pct <  98) return { main: "거의 다 됐어요!",               sub: "곧 장소 목록이 나타납니다" };
+  return          { main: "마무리하고 있어요",                   sub: "곧 장소 목록이 나타납니다" };
+}
+
 export default function Home() {
   const [step, setStep] = useState(0);
   const mainRef = useRef<HTMLElement>(null);
@@ -54,7 +63,11 @@ export default function Home() {
   const [selectedPlace, setSelectedPlace] = useState<PlaceItem | null>(null);
   const [computing, setComputing] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
-  const [prefetchingPlaces, setPrefetchingPlaces] = useState(false);
+  const [bridgeProgress, setBridgeProgress] = useState<{
+    phase: "api" | "images";
+    current: number;
+    total: number;
+  } | null>(null);
   const [step4InitialData, setStep4InitialData] = useState<Step4InitialData | null>(null);
 
   function handleFindMidpoint() {
@@ -79,28 +92,36 @@ export default function Home() {
 
   async function handleSelectStation(station: RecommendedStation) {
     setSelectedStation(station);
-    setPrefetchingPlaces(true);
 
     // 브릿지: 모든 필터의 1페이지 데이터를 병렬로 미리 가져옴
     const keyword = MEETING_KEYWORDS[meetingInfo.meetingType]?.[meetingInfo.venueType] ?? "맛집";
     const isRestaurant = meetingInfo.venueType === "restaurant";
     const filters = isRestaurant ? FOOD_FILTERS : ["전체"];
 
+    // API 단계 시작
+    setBridgeProgress({ phase: "api", current: 0, total: filters.length });
+
     const buildQuery = (f: string) => {
       const filterPart = f !== "전체" ? ` ${f}` : "";
       return `${station.name}역 ${keyword}${filterPart}`;
     };
 
-    // API 병렬 호출 (최대 10초)
+    // API 병렬 호출 (최대 10초) – 완료 시마다 진행률 업데이트
+    let apiCompleted = 0;
     const apiResults = await Promise.race([
       Promise.all(
         filters.map(async (f) => {
           try {
             const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&page=1`);
-            if (!res.ok) return [f, null] as const;
+            if (!res.ok) {
+              setBridgeProgress({ phase: "api", current: ++apiCompleted, total: filters.length });
+              return [f, null] as const;
+            }
             const data = await res.json();
+            setBridgeProgress({ phase: "api", current: ++apiCompleted, total: filters.length });
             return [f, { items: (data.items || []) as PlaceItem[], total: (data.total ?? 0) as number }] as const;
           } catch {
+            setBridgeProgress({ phase: "api", current: ++apiCompleted, total: filters.length });
             return [f, null] as const;
           }
         })
@@ -118,11 +139,20 @@ export default function Home() {
     const allItems = [...initialData.values()].flatMap(d => d.items);
     const allUrls = allItems.flatMap(item => (item.imageUrls ?? []).slice(0, 3));
     if (allUrls.length > 0) {
+      // 이미지 단계 시작
+      setBridgeProgress({ phase: "images", current: 0, total: allUrls.length });
+      let imgCompleted = 0;
       await Promise.race([
         Promise.all(allUrls.map(url => new Promise<void>(resolve => {
           const img = new Image();
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
+          img.onload = () => {
+            setBridgeProgress({ phase: "images", current: ++imgCompleted, total: allUrls.length });
+            resolve();
+          };
+          img.onerror = () => {
+            setBridgeProgress({ phase: "images", current: ++imgCompleted, total: allUrls.length });
+            resolve();
+          };
           img.src = url;
         }))),
         new Promise<void>(resolve => setTimeout(resolve, 5_000)),
@@ -130,7 +160,7 @@ export default function Home() {
     }
 
     setStep4InitialData(initialData);
-    setPrefetchingPlaces(false);
+    setBridgeProgress(null);
     setStep(3);
   }
 
@@ -141,12 +171,14 @@ export default function Home() {
 
   function handleBack() {
     if (computing) setComputing(false);
+    if (bridgeProgress) setBridgeProgress(null);
     if (step > 0) setStep(step - 1);
   }
 
   function handleRestart() {
     setStep(0);
     setComputing(false);
+    setBridgeProgress(null);
     setMeetingInfo({ peopleCount: 2, meetingType: "friends", venueType: "restaurant" });
     setParticipants([]);
     setResults([]);
@@ -159,6 +191,14 @@ export default function Home() {
     ? Math.round((progress.current / progress.total) * 100)
     : 0;
   const loadingMsg = getLoadingMessage(progressPct);
+
+  // 브릿지 진행률: API 단계 0→60%, 이미지 단계 60→100%
+  const bridgePct = bridgeProgress
+    ? bridgeProgress.phase === "api"
+      ? Math.round((bridgeProgress.current / Math.max(bridgeProgress.total, 1)) * 60)
+      : Math.round(60 + (bridgeProgress.current / Math.max(bridgeProgress.total, 1)) * 40)
+    : 0;
+  const bridgeMsg = getBridgeLoadingMessage(bridgePct);
 
   return (
     <div className="h-dvh bg-background flex flex-col overflow-hidden">
@@ -191,18 +231,29 @@ export default function Home() {
       )}
 
       {/* ── 장소 목록 브릿지 오버레이 ── */}
-      {prefetchingPlaces && (
+      {bridgeProgress && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-8">
           <div className="w-14 h-14 rounded-2xl bg-[#111] flex items-center justify-center mb-8">
-            <UtensilsCrossed className="w-7 h-7 text-white" />
+            {bridgeProgress.phase === "api"
+              ? <UtensilsCrossed className="w-7 h-7 text-white" />
+              : <ImageIcon className="w-7 h-7 text-white" />
+            }
           </div>
           <p className="text-[17px] font-bold text-foreground text-center leading-snug mb-1">
-            장소 정보를 불러오고 있어요
+            {bridgeMsg.main}
           </p>
           <p className="text-sm text-text-muted text-center mb-10">
-            잠시만 기다려 주세요
+            {bridgeMsg.sub}
           </p>
-          <div className="w-8 h-8 border-2 border-[#111] border-t-transparent rounded-full animate-spin" />
+          <div className="w-full max-w-xs">
+            <div className="h-1.5 bg-surface rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${bridgePct}%` }}
+              />
+            </div>
+            <p className="text-right text-xs font-medium text-text-muted">{bridgePct}%</p>
+          </div>
         </div>
       )}
 
