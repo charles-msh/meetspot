@@ -170,6 +170,24 @@ async function getGooglePhotoUrl(placeName: string, stationName: string): Promis
   }
 }
 
+// Naver 로컬 검색은 쿼리당 최대 5건만 반환 (start 파라미터 무효)
+// 전략: 페이지마다 "역명 포함" + "역명 없는 광역 쿼리" 조합 → 다른 결과 확보
+// "강남역 맛집" vs "강남 맛집" 처럼 '역' 제거만으로도 Naver가 다른 결과를 반환함
+const PAGE_SUFFIX_PAIRS: [string, string][] = [
+  ["", ""],            // 1페이지: 원본 + 역 제거
+  [" 추천", " 인기"],  // 2페이지: 추천/인기 append
+  [" 유명", " 맛있는"],// 3페이지
+  [" 가볼만한", " 특색있는"], // 4페이지
+  [" 분위기", " 괜찮은"],     // 5페이지
+];
+const MAX_PAGES_TOTAL = 50; // ITEMS_PER_PAGE(10) × MAX_PAGES(5)
+
+/** "OO역 " → "OO " 로 변환 (광역 쿼리용) */
+function dropStation(q: string): string {
+  // "강남역 맛집" → "강남 맛집"
+  return q.replace(/([가-힣A-Za-z0-9()]+)역\s/, "$1 ");
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const query = searchParams.get("query");
@@ -179,10 +197,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "query 파라미터가 필요합니다" }, { status: 400 });
   }
 
+  // 페이지 인덱스(0~4) → 쿼리 변형 선택
+  const pageIdx = Math.min(Math.floor((start - 1) / 10), PAGE_SUFFIX_PAIRS.length - 1);
+  const [s1, s2] = PAGE_SUFFIX_PAIRS[pageIdx];
+
+  // 쿼리 1: 원본(역 포함) + suffix1
+  // 쿼리 2: 역 제거(광역) + suffix2  → Naver가 다른 결과 집합 반환
+  const query1 = query + s1;
+  const query2 = dropStation(query) + s2;
+
   try {
-    const fetchPage = (s: number) =>
+    const naverCall = (q: string) =>
       fetch(
-        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=5&start=${s}&sort=comment`,
+        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q)}&display=5&start=1&sort=comment`,
         {
           headers: {
             "X-Naver-Client-Id": NAVER_CLIENT_ID,
@@ -191,7 +218,10 @@ export async function GET(request: NextRequest) {
         }
       );
 
-    const [res1, res2] = await Promise.all([fetchPage(start), fetchPage(start + 5)]);
+    const [res1, res2] = await Promise.all([
+      naverCall(query1),
+      naverCall(query2),
+    ]);
 
     if (!res1.ok) {
       const err = await res1.text();
@@ -208,7 +238,6 @@ export async function GET(request: NextRequest) {
     const combined = raw.filter((item: Record<string, string>) => {
       const name = stripHtml(item.title).replace(/\s/g, "").toLowerCase();
       const addr = (item.roadAddress || item.address || "").replace(/\s/g, "");
-      // 이름만으로도 중복 체크 (주소 없는 경우 대비), 이름+주소로도 체크
       const keyByName = name;
       const keyByAddr = addr ? `${name}__${addr}` : "";
       if (seen.has(keyByName)) return false;
@@ -217,8 +246,10 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    const total: number = data1.total ?? 0;
-    const nextStart = start + 10; // 중복 제거 후 길이 기준이 아닌 Naver에서 소비한 위치 기준
+    // 1페이지에 결과가 있으면 5페이지 전체 활성화 (total=50)
+    // 결과가 없으면 total=0으로 페이지네이션 숨김
+    const total = combined.length > 0 ? MAX_PAGES_TOTAL : 0;
+    const nextStart = start + 10;
     const hasMore = nextStart <= total;
 
     const naverHeaders = {

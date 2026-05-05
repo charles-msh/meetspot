@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { searchStations, displayName, type Station } from "@/data/stations";
-import { LineBadge } from "@/lib/lineColors";
+import { LineBadge, sortLines } from "@/lib/lineColors";
 import { MapPin, CheckCircle2, Search } from "lucide-react";
 
 interface Props {
@@ -96,7 +96,7 @@ export default function StationSearch({ value, onChange, placeholder = "지하�
                   <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-medium">{displayName(station.name)}</span>
                   <div className="flex gap-0.5 ml-auto">
-                    {station.line.map((l) => (
+                    {sortLines(station.line).map((l) => (
                       <LineBadge key={l} line={l} />
                     ))}
                   </div>

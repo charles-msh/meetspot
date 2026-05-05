@@ -8,7 +8,7 @@ import {
 import type { PlaceItem, RecommendedStation } from "@/lib/types";
 import type { PlaceHoursResult } from "@/app/api/place-hours/route";
 import { findStation, displayName } from "@/data/stations";
-import { LineBadge } from "@/lib/lineColors";
+import { LineBadge, sortLines } from "@/lib/lineColors";
 import KakaoMap from "@/components/KakaoMap";
 
 interface Props {
@@ -348,7 +348,7 @@ export default function Step5PlaceDetail({ place, station, onBack, onRestart }: 
 
             {/* 둘째 줄: 노선 배지 + 도보시간 */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              {station.line.map((l) => (
+              {sortLines(station.line).map((l) => (
                 <LineBadge key={l} line={l} />
               ))}
               {hoursLoading ? (

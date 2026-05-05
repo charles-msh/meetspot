@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { RecommendedStation, Participant } from "@/lib/types";
 import { findStation, displayName } from "@/data/stations";
 import { ChevronRight, Clock, Loader2 } from "lucide-react";
-import { getLineColor } from "@/lib/lineColors";
+import { getLineColor, sortLines } from "@/lib/lineColors";
 
 type Mode = "hotspot" | "location";
 
@@ -362,7 +362,7 @@ export default function Step3Result({ results, resultsNoPop, participants, onRea
                   <div>
                     <span className="font-bold text-[15px] text-foreground">{displayName(station.name)}</span>
                     <div className="flex gap-1 mt-1">
-                      {station.line.map((l) => (
+                      {sortLines(station.line).map((l) => (
                         <span key={l} className={`${getLineColor(l)} text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium`}>
                           {l}
                         </span>
