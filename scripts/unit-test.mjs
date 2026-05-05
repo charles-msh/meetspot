@@ -62,56 +62,41 @@ assert("totalPages=5, page=3 → [1,2,3,4,5]", getPageNumbers(3, 5), [1, 2, 3, 4
 assert("totalPages=5, page=4 → [1,2,3,4,5]", getPageNumbers(4, 5), [1, 2, 3, 4, 5]);
 assert("totalPages=5, page=5 → [1,2,3,4,5]", getPageNumbers(5, 5), [1, 2, 3, 4, 5]);
 
-// ── 3. 쿼리 변형 페이지 인덱스 ──────────────────────────────────
-console.log("\n[3] API 쿼리 변형 (페이지→쿼리 매핑)");
+// ── 3. 카카오 API 페이지 파라미터 ───────────────────────────────
+console.log("\n[3] 카카오 API 페이지 파라미터 매핑");
 
-const PAGE_SUFFIX_PAIRS = [
-  ["", ""],
-  [" 추천", " 인기"],
-  [" 유명", " 맛있는"],
-  [" 가볼만한", " 특색있는"],
-  [" 분위기", " 괜찮은"],
-];
-const MAX_PAGES_TOTAL = 50;
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 15; // 카카오 size=15
 
-function dropStation(q) {
-  return q.replace(/([가-힣A-Za-z0-9()]+)역\s/, "$1 ");
-}
-function getPageIdx(start) {
-  return Math.min(Math.floor((start - 1) / 10), PAGE_SUFFIX_PAIRS.length - 1);
-}
-function buildQueries(query, start) {
-  const pageIdx = getPageIdx(start);
-  const [s1, s2] = PAGE_SUFFIX_PAIRS[pageIdx];
-  return [query + s1, dropStation(query) + s2];
+// 카카오 pageable_count → totalPages 계산
+const MAX_PAGES = 5;
+function calcTotalPagesFromKakao(pageableCount) {
+  return Math.min(MAX_PAGES, Math.max(1, Math.ceil(pageableCount / ITEMS_PER_PAGE)));
 }
 
-// dropStation 테스트
-assert("역 제거: '강남역 맛집' → '강남 맛집'", dropStation("강남역 맛집"), "강남 맛집");
-assert("역 제거: '홍대입구역 카페' → '홍대입구 카페'", dropStation("홍대입구역 카페"), "홍대입구 카페");
-assert("역 제거: '서울역 고기집' → '서울 고기집'", dropStation("서울역 고기집"), "서울 고기집");
-assert("역 제거: '가산디지털단지역 맛집' → '가산디지털단지 맛집'", dropStation("가산디지털단지역 맛집"), "가산디지털단지 맛집");
+assert("pageable_count=45 → 3 pages (15×3)", calcTotalPagesFromKakao(45), 3);
+assert("pageable_count=30 → 2 pages (15×2)", calcTotalPagesFromKakao(30), 2);
+assert("pageable_count=15 → 1 page", calcTotalPagesFromKakao(15), 1);
+assert("pageable_count=0 → 1 page (최소)", calcTotalPagesFromKakao(0), 1);
+assert("pageable_count=16 → 2 pages", calcTotalPagesFromKakao(16), 2);
+assert("pageable_count=1142 → 5 pages (MAX_PAGES 클램프)", calcTotalPagesFromKakao(1142), 5);
 
-// 페이지별 쿼리 빌드 테스트
-assert("start=1  → [원본, 역제거]",    buildQueries("강남역 맛집", 1),  ["강남역 맛집", "강남 맛집"]);
-assert("start=11 → [원본+추천, 역제거+인기]", buildQueries("강남역 맛집", 11), ["강남역 맛집 추천", "강남 맛집 인기"]);
-assert("start=21 → [원본+유명, 역제거+맛있는]", buildQueries("강남역 맛집", 21), ["강남역 맛집 유명", "강남 맛집 맛있는"]);
-assert("start=51 → 최대 클램프 (4페이지 변형)",  buildQueries("강남역 맛집", 51), ["강남역 맛집 분위기", "강남 맛집 괜찮은"]);
+// is_end로 hasMore 결정
+function calcHasMore(isEnd) { return !isEnd; }
+assert("is_end=false → hasMore=true", calcHasMore(false), true);
+assert("is_end=true → hasMore=false", calcHasMore(true), false);
 
 // ── 4. totalPages 계산 ───────────────────────────────────────────
-console.log("\n[4] totalPages 계산");
+console.log("\n[4] totalPages 계산 (ITEMS_PER_PAGE=15)");
 
-const MAX_PAGES = 5;
 function calcTotalPages(total) {
   return Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)));
 }
 
-assert("total=50 → 5 pages", calcTotalPages(50), 5);
+assert("total=45 → 3 pages", calcTotalPages(45), 3);
 assert("total=0  → 1 page (빈 결과도 최소 1)", calcTotalPages(0), 1);
-assert("total=15 → 2 pages", calcTotalPages(15), 2);
-assert("total=10 → 1 page", calcTotalPages(10), 1);
-assert("total=11 → 2 pages", calcTotalPages(11), 2);
+assert("total=15 → 1 page", calcTotalPages(15), 1);
+assert("total=16 → 2 pages", calcTotalPages(16), 2);
+assert("total=75 → 5 pages (MAX_PAGES 클램프)", calcTotalPages(75), 5);
 
 // ── 5. 페이지네이션 표시 조건 ────────────────────────────────────
 console.log("\n[5] 페이지네이션 UI 표시 조건");
@@ -191,14 +176,14 @@ function calcEffectiveTotalPages(apiTotal, firstEmpty, MAX_PAGES, ITEMS_PER_PAGE
   return rawTotal;
 }
 
-// 성신여대역 시나리오: API total=50, 실제 유효 데이터는 2페이지까지
-assert("firstEmpty 미감지 → rawTotalPages=5", calcEffectiveTotalPages(50, undefined, 5, 10), 5);
-assert("3페이지 빈 것 감지 → effectivePages=2", calcEffectiveTotalPages(50, 3, 5, 10), 2);
-assert("2페이지 빈 것 감지 → effectivePages=1 (페이지네이션 숨김)", calcEffectiveTotalPages(50, 2, 5, 10), 1);
-assert("1페이지 빈 것 감지 → effectivePages=1 (최소값)", calcEffectiveTotalPages(50, 1, 5, 10), 1);
-assert("5페이지 빈 것 감지 → effectivePages=4", calcEffectiveTotalPages(50, 5, 5, 10), 4);
+// 성신여대역 시나리오: 카카오 pageable_count=30 → 2페이지가 정상 마지막
+assert("firstEmpty 미감지, pageable=45 → rawTotalPages=3", calcEffectiveTotalPages(45, undefined, 5, 15), 3);
+assert("firstEmpty 미감지, pageable=30 → rawTotalPages=2", calcEffectiveTotalPages(30, undefined, 5, 15), 2);
+assert("3페이지 빈 것 감지 → effectivePages=2", calcEffectiveTotalPages(45, 3, 5, 15), 2);
+assert("2페이지 빈 것 감지 → effectivePages=1 (페이지네이션 숨김)", calcEffectiveTotalPages(45, 2, 5, 15), 1);
+assert("1페이지 빈 것 감지 → effectivePages=1 (최소값)", calcEffectiveTotalPages(45, 1, 5, 15), 1);
 // API total=0 이면 rawTotal=1, firstEmpty 없어도 1페이지
-assert("API total=0, firstEmpty 없음 → 1페이지", calcEffectiveTotalPages(0, undefined, 5, 10), 1);
+assert("API total=0, firstEmpty 없음 → 1페이지", calcEffectiveTotalPages(0, undefined, 5, 15), 1);
 
 // ── 결과 요약 ─────────────────────────────────────────────────────
 console.log(`\n${"─".repeat(50)}`);

@@ -40,7 +40,7 @@ const meetingKeywords: Record<MeetingType, Record<VenueType, string>> = {
 
 const foodFilters = ["전체", "한식", "일식", "중식", "양식", "패스트푸드"];
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 15; // 카카오 로컬 검색 size=15
 const MAX_PAGES = 5;
 
 interface PageEntry { items: PlaceItem[]; total: number; }
@@ -143,8 +143,8 @@ export default function Step4Places({
     if (prefetchedRef.current.has(key)) return true;
     prefetchedRef.current.add(key);
     try {
-      const start = (p - 1) * ITEMS_PER_PAGE + 1;
-      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&start=${start}`);
+      // 카카오 API는 page 파라미터 사용 (1-based)
+      const res = await fetch(`/api/search?query=${encodeURIComponent(buildQuery(f))}&page=${p}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setPageCache(prev => {

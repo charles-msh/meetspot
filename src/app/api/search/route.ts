@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 
+const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY!;
 const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID!;
 const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET!;
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY!;
+
+interface KakaoDocument {
+  place_name: string;
+  category_name: string;
+  address_name: string;
+  road_address_name: string;
+  place_url: string;
+  phone: string;
+}
 
 const redis = Redis.fromEnv();
 
@@ -170,87 +180,46 @@ async function getGooglePhotoUrl(placeName: string, stationName: string): Promis
   }
 }
 
-// Naver 로컬 검색은 쿼리당 최대 5건만 반환 (start 파라미터 무효)
-// 전략: 페이지마다 "역명 포함" + "역명 없는 광역 쿼리" 조합 → 다른 결과 확보
-// "강남역 맛집" vs "강남 맛집" 처럼 '역' 제거만으로도 Naver가 다른 결과를 반환함
-const PAGE_SUFFIX_PAIRS: [string, string][] = [
-  ["", ""],            // 1페이지: 원본 + 역 제거
-  [" 추천", " 인기"],  // 2페이지: 추천/인기 append
-  [" 유명", " 맛있는"],// 3페이지
-  [" 가볼만한", " 특색있는"], // 4페이지
-  [" 분위기", " 괜찮은"],     // 5페이지
-];
-const MAX_PAGES_TOTAL = 50; // ITEMS_PER_PAGE(10) × MAX_PAGES(5)
-
-/** "OO역 " → "OO " 로 변환 (광역 쿼리용) */
-function dropStation(q: string): string {
-  // "강남역 맛집" → "강남 맛집"
-  return q.replace(/([가-힣A-Za-z0-9()]+)역\s/, "$1 ");
-}
-
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const query = searchParams.get("query");
-  const start = parseInt(searchParams.get("start") || "1", 10);
+  const page = parseInt(searchParams.get("page") || "1", 10);
 
   if (!query) {
     return NextResponse.json({ error: "query 파라미터가 필요합니다" }, { status: 400 });
   }
 
-  // 페이지 인덱스(0~4) → 쿼리 변형 선택
-  const pageIdx = Math.min(Math.floor((start - 1) / 10), PAGE_SUFFIX_PAIRS.length - 1);
-  const [s1, s2] = PAGE_SUFFIX_PAIRS[pageIdx];
-
-  // 쿼리 1: 원본(역 포함) + suffix1
-  // 쿼리 2: 역 제거(광역) + suffix2  → Naver가 다른 결과 집합 반환
-  const query1 = query + s1;
-  const query2 = dropStation(query) + s2;
-
   try {
-    const naverCall = (q: string) =>
-      fetch(
-        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q)}&display=5&start=1&sort=comment`,
-        {
-          headers: {
-            "X-Naver-Client-Id": NAVER_CLIENT_ID,
-            "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
-          },
-        }
-      );
+    // 카카오 로컬 검색: 페이지당 15건, pageable_count 기반 정확한 페이지네이션
+    // 중복 없이 최대 45건 탐색 가능 (page 1~3, size=15)
+    const kakaoRes = await fetch(
+      `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&page=${page}&size=15`,
+      { headers: { "Authorization": `KakaoAK ${KAKAO_REST_API_KEY}` } }
+    );
 
-    const [res1, res2] = await Promise.all([
-      naverCall(query1),
-      naverCall(query2),
-    ]);
-
-    if (!res1.ok) {
-      const err = await res1.text();
-      return NextResponse.json({ error: "네이버 API 호출 실패", detail: err }, { status: res1.status });
+    if (!kakaoRes.ok) {
+      const err = await kakaoRes.text();
+      return NextResponse.json({ error: "카카오 API 호출 실패", detail: err }, { status: kakaoRes.status });
     }
 
-    const [data1, data2] = await Promise.all([
-      res1.json(),
-      res2.ok ? res2.json() : Promise.resolve({ items: [] }),
-    ]);
+    const kakaoData = await kakaoRes.json();
+    const documents: KakaoDocument[] = kakaoData.documents || [];
+    const meta = kakaoData.meta || {};
+    const pageableCount: number = meta.pageable_count ?? 0;
+    const isEnd: boolean = meta.is_end ?? true;
 
-    const raw = [...(data1.items || []), ...(data2.items || [])];
-    const seen = new Set<string>();
-    const combined = raw.filter((item: Record<string, string>) => {
-      const name = stripHtml(item.title).replace(/\s/g, "").toLowerCase();
-      const addr = (item.roadAddress || item.address || "").replace(/\s/g, "");
-      const keyByName = name;
-      const keyByAddr = addr ? `${name}__${addr}` : "";
-      if (seen.has(keyByName)) return false;
-      seen.add(keyByName);
-      if (keyByAddr) seen.add(keyByAddr);
-      return true;
-    });
+    const combined = documents.map(doc => ({
+      title: doc.place_name,
+      category: doc.category_name,
+      address: doc.address_name,
+      roadAddress: doc.road_address_name,
+      link: doc.place_url,
+      telephone: doc.phone,
+    }));
 
-    // 1페이지에 결과가 있으면 5페이지 전체 활성화 (total=50)
-    // 결과가 없으면 total=0으로 페이지네이션 숨김
-    const total = combined.length > 0 ? MAX_PAGES_TOTAL : 0;
-    const nextStart = start + 10;
-    const hasMore = nextStart <= total;
+    // pageable_count가 실제 페이지 수 결정 (e.g. 45 → 3페이지)
+    const total = pageableCount;
+    const hasMore = !isEnd;
 
     const naverHeaders = {
       "X-Naver-Client-Id": NAVER_CLIENT_ID,
@@ -271,8 +240,9 @@ export async function GET(request: NextRequest) {
       : stationName;
 
     const placesWithImages = await Promise.all(
-      combined.map(async (item: Record<string, string>) => {
-        const name = stripHtml(item.title);
+      combined.map(async (item) => {
+        // 카카오는 plain text 반환 (Naver와 달리 HTML 태그 없음)
+        const name = item.title;
 
         // Redis 캐시 확인 (TTL 7일 / v3: 원본 URL 저장으로 캐시 무효화)
         const cacheKey = `v3:img:${stationName}:${name}`;
@@ -350,7 +320,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     return NextResponse.json({
-      items: placesWithImages, nextStart, hasMore, total,
+      items: placesWithImages, hasMore, total,
       _quota: { places: placesCount ?? 0, vision: visionCount ?? 0, limits: LIMITS },
     });
   } catch {
@@ -358,6 +328,3 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function stripHtml(str: string): string {
-  return str.replace(/<[^>]*>/g, "");
-}
