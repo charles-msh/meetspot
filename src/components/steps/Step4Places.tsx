@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { RecommendedStation, VenueType, MeetingType, PlaceItem } from "@/lib/types";
 import { UtensilsCrossed, Wine, Coffee, ArrowLeft, Search, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -42,10 +42,27 @@ const foodFilters = ["전체", "한식", "일식", "중식", "양식", "패스�
 const defaultImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop";
 const ITEMS_PER_PAGE = 10;
 const MAX_PAGES = 5;
+const IMAGE_LOAD_TIMEOUT_MS = 4000; // 이미지 로드 최대 대기시간
 
-// 캐시: filter → page → { items, total }
 interface PageEntry { items: PlaceItem[]; total: number; }
 type PageCache = Map<string, Map<number, PageEntry>>;
+
+// ── 스켈레톤 카드 컴포넌트 ───────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+      <div className="px-4 pt-3.5 pb-3">
+        <div className="h-4 w-2/3 bg-gray-200 rounded animate-pulse" />
+        <div className="h-3 w-1/3 bg-gray-100 rounded animate-pulse mt-1.5" />
+      </div>
+      <div className="flex gap-1 px-4 pb-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="shrink-0 w-[120px] h-[120px] bg-gray-200 rounded animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Step4Places({ station, venueType, meetingType, onBack, onRestart, onSelectPlace, scrollRef }: Props) {
   const [filter, setFilter] = useState("전체");
@@ -53,16 +70,73 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pageCache, setPageCache] = useState<PageCache>(new Map());
-  const prefetchedRef = useRef<Set<string>>(new Set()); // "filter:page"
+  const [imagesReady, setImagesReady] = useState(false);
+  const prefetchedRef = useRef<Set<string>>(new Set());
+  const imageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const venue = venueLabels[venueType];
   const meetingLabel = meetingTypeLabels[meetingType];
   const showFoodFilter = venueType === "restaurant";
 
   const currentEntry = pageCache.get(filter)?.get(page);
-  const places = currentEntry?.items ?? [];
   const total = currentEntry?.total ?? 0;
   const totalPages = Math.min(MAX_PAGES, Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)));
+
+  // ── 크로스-페이지 중복 제거 ──────────────────────────────────
+  // 현재 페이지 이전에 이미 표시된 업체명을 수집
+  const seenBeforeCurrentPage = useMemo(() => {
+    const seen = new Set<string>();
+    const filterCache = pageCache.get(filter);
+    if (filterCache && page > 1) {
+      for (let p = 1; p < page; p++) {
+        filterCache.get(p)?.items.forEach(item => seen.add(item.title));
+      }
+    }
+    return seen;
+  }, [pageCache, filter, page]);
+
+  const places = (currentEntry?.items ?? []).filter(
+    item => !seenBeforeCurrentPage.has(item.title)
+  );
+
+  // ── 이미지 프리로드 → 전부 로드되면 화면 전환 ────────────────
+  useEffect(() => {
+    if (loading) return;
+    if (places.length === 0) { setImagesReady(true); return; }
+
+    setImagesReady(false);
+
+    const urls = places.flatMap(p =>
+      p.imageUrls?.length > 0 ? p.imageUrls.slice(0, 3) : [defaultImage]
+    );
+
+    if (urls.length === 0) { setImagesReady(true); return; }
+
+    // 최대 대기시간 타이머 (느린 네트워크 대비)
+    if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
+    imageTimerRef.current = setTimeout(() => setImagesReady(true), IMAGE_LOAD_TIMEOUT_MS);
+
+    let remaining = urls.length;
+    const done = () => {
+      remaining--;
+      if (remaining <= 0) {
+        if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
+        setImagesReady(true);
+      }
+    };
+
+    for (const url of urls) {
+      const img = new window.Image();
+      img.onload = done;
+      img.onerror = done;
+      img.src = url;
+    }
+
+    return () => {
+      if (imageTimerRef.current) clearTimeout(imageTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, page, filter]);
 
   const buildQuery = useCallback((foodFilter: string) => {
     const keyword = meetingKeywords[meetingType]?.[venueType] || "맛집";
@@ -98,6 +172,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     setFilter("전체");
     setPage(1);
     setPageCache(new Map());
+    setImagesReady(false);
     prefetchedRef.current = new Set();
 
     async function init() {
@@ -122,6 +197,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   async function goToPage(p: number) {
     if (p < 1 || p > totalPages || p === page) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setImagesReady(false);
     setPage(p);
     if (!prefetchedRef.current.has(`${filter}:${p}`)) {
       setLoading(true);
@@ -133,6 +209,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
   async function handleFilterClick(f: string) {
     if (f === filter) return;
     scrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setImagesReady(false);
     setFilter(f);
     setPage(1);
     if (!prefetchedRef.current.has(`${f}:1`)) {
@@ -148,6 +225,9 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
     if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
     return [page - 2, page - 1, page, page + 1, page + 2];
   }
+
+  // 로딩 중이거나 이미지 아직 준비 안 됨 → 스켈레톤 표시
+  const showSkeleton = loading || (!imagesReady && !error);
 
   return (
     <div className="space-y-4">
@@ -182,12 +262,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
 
       {/* 장소 리스트 */}
       <div className="space-y-2">
-        {loading ? (
-          <div className="flex flex-col items-center py-12 gap-3">
-            <Loader2 className="w-6 h-6 text-[#999] animate-spin" />
-            <p className="text-sm text-text-muted">{meetingLabel}에 딱 맞는 장소를 찾는 중...</p>
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-sm">{error}</p>
             <button
@@ -197,6 +272,11 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
               다시 시도
             </button>
           </div>
+        ) : showSkeleton ? (
+          /* 스켈레톤 카드: 데이터 로딩 중 또는 이미지 프리로드 중 */
+          <>
+            {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+          </>
         ) : places.length === 0 ? (
           <div className="text-center py-8 text-text-muted text-sm">
             <Search className="w-4 h-4 mx-auto mb-2" />
@@ -255,7 +335,7 @@ export default function Step4Places({ station, venueType, meetingType, onBack, o
       </div>
 
       {/* 페이지네이션 */}
-      {!loading && places.length > 0 && totalPages > 1 && (
+      {!showSkeleton && places.length > 0 && totalPages > 1 && (
         <div className="flex items-center justify-center gap-1 py-2">
           <button
             onClick={() => goToPage(page - 1)}

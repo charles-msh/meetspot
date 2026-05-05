@@ -126,6 +126,62 @@ assert("결과 없음 → 숨김", shouldShowPagination(false, 0, 5), false);
 assert("1페이지뿐(total≤10) → 숨김", shouldShowPagination(false, 5, 1), false);
 assert("결과 있음(8건) + 2페이지 → 표시됨", shouldShowPagination(false, 8, 2), true);
 
+// ── 6. 크로스-페이지 중복 제거 ──────────────────────────────────
+console.log("\n[6] 크로스-페이지 중복 제거");
+
+// pageCache 시뮬레이션
+function getSeenBeforeCurrentPage(pageCache, filter, page) {
+  const seen = new Set();
+  const filterCache = pageCache.get(filter);
+  if (filterCache && page > 1) {
+    for (let p = 1; p < page; p++) {
+      filterCache.get(p)?.items.forEach(item => seen.add(item.title));
+    }
+  }
+  return seen;
+}
+function dedup(items, seenSet) {
+  return items.filter(item => !seenSet.has(item.title));
+}
+
+// 테스트 데이터
+const page1Items = [
+  { title: "맛찬들왕소금구이" }, { title: "갈비명가이상" }, { title: "길음모소리" },
+  { title: "한술식당" }, { title: "갈비명가이상돈암" }, { title: "주공길음" }, { title: "장수감자탕" }
+];
+const page2Items = [
+  { title: "맛찬들왕소금구이" }, { title: "갈비명가이상" }, { title: "길음모소리" },
+  { title: "한술식당" }, { title: "갈비명가이상돈암" }, { title: "새로운식당A" }, { title: "새로운식당B" }
+];
+const cache = new Map();
+cache.set("한식", new Map([
+  [1, { items: page1Items, total: 50 }],
+  [2, { items: page2Items, total: 50 }],
+]));
+
+const seen1 = getSeenBeforeCurrentPage(cache, "한식", 1);
+const seen2 = getSeenBeforeCurrentPage(cache, "한식", 2);
+const deduped1 = dedup(page1Items, seen1);
+const deduped2 = dedup(page2Items, seen2);
+
+assert("1페이지: seen 없음 → 전체 7건 표시", deduped1.length, 7);
+assert("2페이지: 1페이지 중복 5건 제거 → 새 2건만 표시",
+  deduped2.map(i => i.title), ["새로운식당A", "새로운식당B"]);
+assert("2페이지: 필터 후 2건", deduped2.length, 2);
+
+// 3페이지: 1+2페이지 모두 중복 제거
+const page3Items = [
+  { title: "맛찬들왕소금구이" }, { title: "새로운식당A" }, { title: "완전신규C" }
+];
+cache.get("한식").set(3, { items: page3Items, total: 50 });
+const seen3 = getSeenBeforeCurrentPage(cache, "한식", 3);
+const deduped3 = dedup(page3Items, seen3);
+assert("3페이지: 1+2페이지 전부 제거 → 신규 1건만", deduped3.map(i => i.title), ["완전신규C"]);
+
+// 필터 전환 시: 다른 filter의 seen은 영향 없어야 함
+const seenForChinese = getSeenBeforeCurrentPage(cache, "중식", 2);
+assert("중식 필터는 한식 캐시와 독립적 → seen 0건", seenForChinese.size, 0);
+
 // ── 결과 요약 ─────────────────────────────────────────────────────
 console.log(`\n${"─".repeat(50)}`);
 console.log(`결과: ${passed}개 통과 / ${failed}개 실패`);
