@@ -55,6 +55,15 @@ const FOOD_LABELS = new Set([
 // foodScore 최소 임계값: 이 이상이어야 음식 사진으로 분류
 const FOOD_SCORE_THRESHOLD = 0.5;
 
+// ── 메뉴판·간판 이미지 즉시 탈락 라벨 ───────────────────────────
+// 이 라벨 중 하나라도 score > DISQUALIFY_THRESHOLD 이면 음식 점수와 무관하게 제외
+// 메뉴판: Text(0.98)/Font(0.95) / 간판: Signage(0.92)/Banner(0.88) 등
+const DISQUALIFY_LABELS = new Set([
+  "Text", "Font", "Document", "Signage", "Poster", "Banner",
+  "Paper", "Brand", "Logo", "Label", "Handwriting", "Receipt",
+]);
+const DISQUALIFY_THRESHOLD = 0.75;
+
 // ── 카테고리별 Vision 라벨 부스트 (1.8배 가중) ──────────────────
 // 업체 카테고리에 맞는 라벨에 높은 점수를 줘서 카테고리와 맞지 않는
 // 이미지를 자연스럽게 걸러냄
@@ -247,6 +256,16 @@ async function filterFoodImages(imageUrls: string[], category: string = ""): Pro
     (data.responses || []).forEach((resp: Record<string, unknown>, i: number) => {
       const labels = (resp.labelAnnotations as { description: string; score: number }[]) || [];
       const topLabels = labels.slice(0, 5).map(l => `${l.description}(${l.score.toFixed(2)})`).join(",");
+
+      // 메뉴판·간판 감지 시 즉시 탈락
+      const disqualifier = labels.find(
+        l => DISQUALIFY_LABELS.has(l.description) && l.score >= DISQUALIFY_THRESHOLD
+      );
+      if (disqualifier) {
+        console.log(`[Vision] img[${i}] ❌ 탈락(${disqualifier.description} ${disqualifier.score.toFixed(2)}) labels=${topLabels}`);
+        return;
+      }
+
       // 음식 라벨 점수 합산 (카테고리 일치 라벨은 BOOST배 가중)
       const foodScore = labels
         .filter((l) => FOOD_LABELS.has(l.description))
